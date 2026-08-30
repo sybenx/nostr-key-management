@@ -2,121 +2,42 @@
 
 A nostr identity is a private key and nothing else. There is no account to
 recover, no provider to appeal to, and no agreed way to get that key onto a
-second device. In practice users copy an nsec out of one app and paste it into
-another, mail it to themselves, or photograph it — and when the first device is
-lost, the identity is lost with it. Every client solves this differently or not
-at all, which means the same user, on the same key, gets a different answer
-about what is safe depending on which app they opened. This repository
-specifies one answer: how a client stores an nsec at rest, how that nsec
-reaches a second device over a channel neither device controls, and how it is
-backed up so that losing every device is recoverable rather than final. It also
-specifies an optional threshold-signing mode in which no single device, site,
-or server holds a usable copy of the key, and in which a device can actually be
-revoked — something base nostr cannot do at all.
+second device. In practice people copy an nsec out of one app and paste it into
+another, mail it to themselves, or photograph it, and when the first device is
+lost the identity is lost with it. Every client solves this differently or not
+at all, so the same user, holding the same key, gets a different answer about
+what is safe depending on which app they happened to open.
 
-## Where to start
+This is a specification for that problem: how a client stores an nsec at rest,
+how that nsec reaches a second device over a channel neither device controls,
+and how it is backed up so that losing every device is recoverable rather than
+final. It also specifies an optional threshold-signing mode in which no single
+device, site, or server holds a usable copy of the key, and in which a device
+can actually be revoked.
 
-Read [OVERVIEW.md](OVERVIEW.md) first. It is the readable version: what the
-user sees, what is underneath, and why the defaults are what they are, in about
-four pages.
+## Which file to read
 
-[NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md) is the specification and is
-the normative document. Where the two disagree, the specification governs. Its
-MUST, MUST NOT, SHOULD, and MAY carry their usual meanings.
+[OVERVIEW.md](OVERVIEW.md) is the readable version: what the user sees and what
+is underneath, in about four pages.
+[NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md) is the normative
+specification, and governs wherever the two disagree.
 
-## Relationship to NIP-46
+## Why this is not NIP-46
 
-NIP-46 is a signing protocol. A client hands a remote signer an event, the
-signer signs it, and the key itself never moves. This document specifies
-something adjacent rather than competing: a key lifecycle protocol, in which
-the key does move, to a device the user has just proved they control, and lives
-there afterward. The two answer different questions, and neither answer
-substitutes for the other.
-
-The practical difference is what has to be reachable. A remote signer must be
-reachable for every single signature, so a client using one is online for each
-post or it does not post. Once a transfer under this specification completes,
-the receiving device needs nothing reachable at all — it holds the key and can
-sign alone, indefinitely. That is the same trade §11.3 makes when it presents
-threshold signing and backup-only as the two options and preselects
-backup-only, and it is why offline posting is treated throughout as a property
-worth preserving rather than an edge case.
-
-They compose. A remote signer is itself a device holding a key, and NIP-46 says
-nothing about how that key arrived on the machine, how it is stored at rest,
-whether it is backed up, or what happens when the machine is lost. Those are
-exactly the questions in §2, §4, §5, and §7. Someone running a bunker still has
-every one of them to answer, and can answer them with this document without
-changing anything about how their signer speaks NIP-46.
-
-The part of this specification that most resembles NIP-46 in shape is §11's
-threshold mode, where a co-signer does have to be reachable for a share-only
-device to sign. It differs in two ways. No single party ever holds a usable
-key, the co-signer included, so a compromised co-signer is bounded rather than
-total. And it is optional and off by default, the reachability cost being
-precisely the reason for that default.
-
-## What is reusable outside nostr
-
-Several of the constructions here are not about nostr and could be lifted whole
-into anything that has to move a secret between two devices a user owns. The
-storage ladder in §2.1 is a platform-by-platform ranking of at-rest mechanisms
-with the rule that every rung is acceptable and the client silently takes the
-strongest one available, which generalises to any application holding a
-long-lived secret. The degrade-never-block principle in §0 — that no addition
-to the base may prevent a user from logging in, transferring, or using their
-key on a device lacking a feature — is a design constraint, not a nostr fact.
-The commit-reveal short authentication string in §3.3 is the ZRTP/Matrix
-construction stated precisely enough to implement, and applies to any two
-parties comparing a short code over an untrusted channel. The rule in §2.2 that
-an action is privileged if and only if it touches the key itself, never the
-content, is a general answer to the question of when an application should
-prompt. And the blob-store construction in §7.2 is a stateless
-password-protected backup service with its leakage properties stated honestly
-rather than advertised, including what a two-store compromise does and does not
-cost the user.
-
-## Known gaps
-
-**The event kinds are unregistered placeholders.** Every kind used here —
-24301 through 24319, and the parameterised replaceable kind 30242 — was picked
-to be plausible and unoccupied, not allocated. Anyone implementing against this
-document today should expect all of them to change, and should not treat
-interoperation with another implementation's choice of the same numbers as
-meaningful. They will stop being placeholders only by going through a NIP, and
-not before.
-
-**There are no test vectors.** Two implementations cannot currently be shown to
-agree on anything. The SAS derivation in §3.3 needs known-answer vectors for
-the commitment, the code, and the emoji and digit extraction; the NIP-59
-wrap-and-unseal path in §3.4 needs vectors covering the seal, the wrap, and the
-expiration handling; the `ncryptsec` handling in §6 and §7.1 needs vectors at
-both `log_n` values; and the §7.2 blob arithmetic — the scrypt derivation, the
-`K_auth` and `K_wrap` HKDF steps, the `K_enc XOR K_srv` input, and the content-key
-wrapping — needs vectors end to end. Until these exist, agreement between
-implementations is an assertion rather than a fact.
-
-**The emoji table does not exist yet.** Appendix A states the constraints on the
-64-entry `EMOJI_TABLE` — visually distinct, fixed order, rendering identically
-across iOS, Android, Windows and common browsers, no skin-tone modifiers, no
-flags, no pairs differing only by colour — but does not contain the table. The
-short authentication string is therefore not reproducible across
-implementations, which makes §3.3 unimplementable in the interoperable sense
-even though its construction is fully specified.
+NIP-46 is a signing protocol and this is a key lifecycle protocol. A remote
+signer has to be reachable for every single signature, whereas a device that
+has received a key under this specification needs nothing reachable at all,
+ever again. And NIP-46 says nothing about how the signer's own key arrived on
+that machine, how it is stored there, whether it is backed up, or what happens
+when the machine is lost, which is the whole of what this document is about.
 
 ## Status
 
-This is version 8.0-rc1: a release candidate, not a finished standard. The
-design has been through several rounds of adversarial review and a number of
-choices that look like weak defaults are deliberate and are argued for in
-place — backup-only rather than threshold as the default, no password floor,
-`lock = device` as the default unlock threshold. Given the three gaps above,
-review is more useful right now than implementation. If you disagree with
-something, or find something ambiguous, please record it in
-[SPEC_ISSUES.md](SPEC_ISSUES.md) rather than deviating silently.
-
-## License
-
-[CC0 1.0 Universal](LICENSE). The specification is in the public domain
-worldwide to the extent permitted by law, so that anyone may implement it,
-fork it, or fold parts of it into a NIP without asking.
+Version 8.0-rc1 is a release candidate rather than a finished standard, and
+review is more useful right now than implementation, because three things are
+genuinely missing: the event kinds are unregistered placeholders that will
+change, there are no test vectors for any of the derivations, and Appendix A
+specifies the constraints on the 64-entry emoji table without containing the
+table, so the short authentication string is not yet reproducible across
+implementations. Disagreements and suspected errors belong in
+[SPEC_ISSUES.md](SPEC_ISSUES.md).

@@ -24,6 +24,38 @@ four pages.
 the normative document. Where the two disagree, the specification governs. Its
 MUST, MUST NOT, SHOULD, and MAY carry their usual meanings.
 
+## Relationship to NIP-46
+
+NIP-46 is a signing protocol. A client hands a remote signer an event, the
+signer signs it, and the key itself never moves. This document specifies
+something adjacent rather than competing: a key lifecycle protocol, in which
+the key does move, to a device the user has just proved they control, and lives
+there afterward. The two answer different questions, and neither answer
+substitutes for the other.
+
+The practical difference is what has to be reachable. A remote signer must be
+reachable for every single signature, so a client using one is online for each
+post or it does not post. Once a transfer under this specification completes,
+the receiving device needs nothing reachable at all — it holds the key and can
+sign alone, indefinitely. That is the same trade §11.3 makes when it presents
+threshold signing and backup-only as the two options and preselects
+backup-only, and it is why offline posting is treated throughout as a property
+worth preserving rather than an edge case.
+
+They compose. A remote signer is itself a device holding a key, and NIP-46 says
+nothing about how that key arrived on the machine, how it is stored at rest,
+whether it is backed up, or what happens when the machine is lost. Those are
+exactly the questions in §2, §4, §5, and §7. Someone running a bunker still has
+every one of them to answer, and can answer them with this document without
+changing anything about how their signer speaks NIP-46.
+
+The part of this specification that most resembles NIP-46 in shape is §11's
+threshold mode, where a co-signer does have to be reachable for a share-only
+device to sign. It differs in two ways. No single party ever holds a usable
+key, the co-signer included, so a compromised co-signer is bounded rather than
+total. And it is optional and off by default, the reachability cost being
+precisely the reason for that default.
+
 ## What is reusable outside nostr
 
 Several of the constructions here are not about nostr and could be lifted whole

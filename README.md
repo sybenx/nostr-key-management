@@ -1,6 +1,8 @@
 # Nostr Key Transfer & Storage
 
-This spec is a method to send and recieve Nostr secrets via QR code by utilizing public servers and gift wrap, iCloud storage and sync, and Google's. It is fully compatible with FROST and silently upgrades if the user attaches a compatible server. There are protections from various angles of attack. The most robust method of security available is utilized automatically. User experience is not degraded past unusability and users are permitted to expose themselves as much or as little as they prefer. 
+This spec is a method to send and recieve Nostr secrets primarily by utilizing QR code and passphrases along with public servers with strong shoulder surfing resistance. It is a tiered system utilizing the most secure method of key management first: FROST, iCloud Storage, Google secure sync,  gift wrap, and is compatible with Bluetooth and LAN transfer. It is fully compatible with FROST and can silently upgrade with a compatible FROST server. When FROST is activated, there are protections from various angles of attack including single device compromise and single server compromise. Users are encouraged to make themselves secure as much or as little as they prefer and where robust defaults can be chosen withinreasonablr constraints, they are. 
+
+The primary purpose of this project is to allow for increased security of key transfer and storage than the typical copy and paste method. Everything else we can reasonably do to increase security while maintaining a better user experience than that low bar, we attempt to do. 
 
 ## Elevator Pitch
 A nostr identity is a private key and nothing else. There is no account to

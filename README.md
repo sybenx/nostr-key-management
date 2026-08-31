@@ -1,8 +1,10 @@
 # Nostr Key Transfer & Storage
 
-This spec is a method to send and recieve Nostr secrets primarily by utilizing QR code and passphrases along with public servers with strong shoulder surfing resistance. It is a tiered system utilizing the most secure method of key management first: FROST, iCloud Storage, Google secure sync,  gift wrap, and is compatible with Bluetooth and LAN transfer. It is fully compatible with FROST and can silently upgrade with a compatible FROST server. When FROST is activated, there are protections from various angles of attack including single device compromise and single server compromise. Users are encouraged to make themselves secure as much or as little as they prefer and where robust defaults can be chosen for the user, within reasonable constraints, they are. 
+This spec is a method to send and recieve Nostr secrets primarily by utilizing a QR code and giftwrap for secure transfer. 
 
-The primary purpose of this project is to allow for increased security of key transfer and storage than the typical copy and paste method. Everything else we can reasonably do to increase security while maintaining a better user experience than that low bar, we attempt to do. 
+The primary purpose of this project is to allow for increased security of key transfer and storage than the typical copy and paste method. Everything else we can reasonably do to increase security while maintaining a better user experience than that low bar, we attempt to do
+
+It is a tiered system utilizing the most secure method of key management first: FROST, iCloud Storage, Google secure sync,  gift wrap, and is compatible with Bluetooth and LAN transfer. It is fully compatible with FROST and can silently upgrade with a compatible FROST server. When FROST is activated, there are protections from various angles of attack including single device compromise and single server compromise. Even before FROST is activated, there is strong shoulder surfing resistance. Users are encouraged to make themselves secure as much or as little as they prefer and where robust defaults can be chosen for the user, within reasonable constraints, they are. 
 
 ## Elevator Pitch
 A nostr identity is a private key and nothing else. There is no account to

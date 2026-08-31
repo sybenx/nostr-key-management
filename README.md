@@ -1,5 +1,7 @@
 # Nostr Key Transfer & Storage
 
+The most notable thing about this is the serverless secret transferred via QR.
+
 This spec is a method to send and recieve Nostr secrets by utilizing [QR-codes](https://en.wikipedia.org/wiki/QR_code) and [gift-wrap](https://github.com/nostr-protocol/nips/blob/master/17.md) messages while maintaining strong shoulder surfing resistance. It describes a method of transfer for nsec identities, relay information, and other secrets with reasonably high security.
 
 The primary purpose of this project is to encourage increased security for key transfer than the typical copy-paste method. under this spec, storage security is upgraded where possible, within reasonable constraints. This is a substantial upgrade to keeping a plain text nsec in a notes file. 

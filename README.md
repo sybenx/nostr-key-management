@@ -6,7 +6,9 @@ The primary purpose of this project is to allow for increased security of key tr
 
 #This project benefits from more eyes and more implementations. Devs and users are encouraged to build code modules that can be deployed widely in various software conditions. Pull requests and issue submissions are welcome.#
 
-NKTS is a tiered system utilizing the most secure method of key management where available first: FROST, iCloud Storage, Google secure sync, secure gift-wrap over public relays, and is compatible with Bluetooth and LAN transfer. It is fully compatible with FROST and can silently upgrade  once paired with a compatible FROST server. When FROST is activated, there are protections from various angles of attack including device compromise and server compromise. Even before FROST is activated, there is strong shoulder surfing resistance. Users are encouraged to make themselves secure as much or as little as they prefer and where robust defaults can be chosen for the user, within reasonable constraints, they are. 
+NKTS is a tiered system utilizing the most secure method of key management where available first: FROST, iCloud Storage, Google secure sync, secure gift-wrap over public relays, and is compatible with Bluetooth and LAN transfer. It is fully compatible with FROST and can silently upgrade  once paired with a compatible FROST server. When FROST is activated, there are protections from various angles of attack including device compromise and server compromise. Even before FROST is activated, there is strong shoulder surfing resistance. 
+
+Users are encouraged to make themselves as secure as their preferences allow and where robust defaults can be chosen automatically without major compromise, they are. 
 
 ## Elevator Pitch
 A nostr identity is a private key and nothing else. There is no account to

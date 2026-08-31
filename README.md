@@ -2,7 +2,7 @@
 
 This spec is a method to send and recieve Nostr secrets by utilizing [QR-codes](https://en.wikipedia.org/wiki/QR_code) and [gift-wrap](https://github.com/nostr-protocol/nips/blob/master/17.md) messages. It can transfer nsec identities, secrets, and relay information with reasonably high security.
 
-The primary purpose of this project is to allow for increased security of key transfer and storage than the typical copy and paste method. We then attempt to upgrade security where possible, within reasonable constraints, to keep the user key safe and help the user to avoid needing the copy-paste method. 
+The primary purpose of this project is to allow for increased security of key transfer and storage than the typical copy-and-paste method. We then attempt to upgrade security where possible, within reasonable constraints, to keep the user key safe and help the user to avoid needing the copy-paste method. 
 
 #This project benefits from more eyes and more implementations. Devs and users are encouraged to build code modules that can be deployed widely in various software conditions. Pull requests and issue submissions are welcome.#
 

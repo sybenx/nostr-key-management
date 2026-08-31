@@ -12,17 +12,11 @@ Users are made as secure as their preferences allow, so far as the spec is able,
 
 ## Why this is not NIP-46
 
-NIP-46 is a signing protocol. A remote
-signer has to be reachable for every single signature, whereas a device that
-has received a key under this specification needs nothing reachable at all. NIP-46 says nothing about how the signer's own key arrived on that machine, how it is stored there, whether it is backed up, or what happens when the machine is lost. That gap is where this project sits. 
+NIP-46 is a signing protocol for a remote signer. A remote signer has to be reachable for every single event signature, whereas a device that has received a key under this spec does not until FROST is activated, after which only 2 of N devices are required. 
+
+NIP-46 does not specify a key transfer method nor about how to store it, whether it is backed up, or what happens when the machine is lost. This project is intended to fill some or all of those gaps. 
 
 ## Status
 
 Version 8.0-rc1 is a release candidate rather than a finished standard, and
-review is more useful right now than implementation, because three things are
-genuinely missing: the event kinds are unregistered placeholders that will
-change, there are no test vectors for any of the derivations, and Appendix A
-specifies the constraints on the 64-entry emoji table without containing the
-table, so the short authentication string is not yet reproducible across
-implementations. Disagreements and suspected errors belong in
-[SPEC_ISSUES.md](SPEC_ISSUES.md).
+review is more useful right now than implementation, because three things are missing: the event kinds are unregistered placeholders that will change, there are no test vectors for any of the derivations, and Appendix A specifies the constraints on the 64-entry emoji table without containing the table, so the short authentication string is not yet reproducible across implementations. Disagreements and suspected errors belong in [SPEC_ISSUES.md](SPEC_ISSUES.md).

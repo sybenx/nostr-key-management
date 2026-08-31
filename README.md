@@ -12,7 +12,7 @@ Users are made as secure as their preferences allow, so far as the spec is able,
 
 ## Why this is not NIP-46
 
-NIP-46 is a signing protocol for a remote signer. A remote signer has to be reachable for every single event signature, whereas a device that has received a key under this spec does not until FROST is activated, after which only 2 of N devices are required. 
+NIP-46 is a signing protocol for a remote signer. A remote signer has to be reachable for every single event signature, whereas a device that has received a key under this spec does not *need* a second device at all. If FROST is activated, only 2 of N devices are required and special device authorizations in the spec allow for fully offline signing from a single device. 
 
 NIP-46 does not specify a key transfer method nor about how to store it, whether it is backed up, or what happens when the machine is lost. This project is intended to fill some or all of those gaps. 
 

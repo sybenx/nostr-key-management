@@ -2,7 +2,7 @@
 
 This spec is a method to send and recieve Nostr secrets by utilizing [QR-codes](https://en.wikipedia.org/wiki/QR_code) and [gift-wrap](https://github.com/nostr-protocol/nips/blob/master/17.md) messages. It can transfer nsec identities, secrets, and relay information with reasonably high security.
 
-The primary purpose of this project is to allow for increased security of key transfer and storage than the typical copy-and-paste method. Security is upgraded where possible, within reasonable constraints, to help keep the user key safe and help the user to avoid needing the copy-paste method. 
+The primary purpose of this project is to allow for increased security of key transfer and storage than the typical copy-paste method. Security is upgraded where possible, within reasonable constraints, to help keep the user key safe and help the user to avoid needing the copy-paste method. 
 
 It is a tiered system utilizing the most secure method of key management where available first: FROST, iCloud Storage, Google secure sync, secure gift-wrap over public relays, and is compatible with Bluetooth and LAN transfer. It is fully compatible with FROST and can silently upgrade  once paired with a compatible FROST server. When FROST is activated, there are protections from various angles of attack including device compromise and server compromise. Even before FROST is activated, there is strong shoulder surfing resistance. 
 

@@ -1,5 +1,8 @@
 # Nostr Key Transfer & Storage
 
+This spec is a method to send and recieve Nostr secrets via QR code by utilizing public servers and gift wrap, iCloud storage and sync, and Google's. It is fully compatible with FROST and silently upgrades if the user attaches a compatible server. There are protections from various angles of attack. The most robust method of security available is utilized automatically. User experience is not degraded past unusability and users are permitted to expose themselves as much or as little as they prefer. 
+
+## Elevator Pitch
 A nostr identity is a private key and nothing else. There is no account to
 recover, no provider to appeal to, and no agreed way to get that key onto a
 second device. In practice people copy an nsec out of one app and paste it into

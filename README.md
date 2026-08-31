@@ -4,11 +4,11 @@ This spec is a method to send and recieve Nostr secrets by utilizing [QR-codes](
 
 The primary purpose of this project is to allow for increased security of key transfer and storage than the typical copy-and-paste method. Security is upgraded where possible, within reasonable constraints, to help keep the user key safe and help the user to avoid needing the copy-paste method. 
 
-#This project benefits from more eyes and more implementations. Devs and users are encouraged to build code modules that can be deployed widely in various software conditions. Pull requests and issue submissions are welcome.#
-
-NKTS is a tiered system utilizing the most secure method of key management where available first: FROST, iCloud Storage, Google secure sync, secure gift-wrap over public relays, and is compatible with Bluetooth and LAN transfer. It is fully compatible with FROST and can silently upgrade  once paired with a compatible FROST server. When FROST is activated, there are protections from various angles of attack including device compromise and server compromise. Even before FROST is activated, there is strong shoulder surfing resistance. 
+It is a tiered system utilizing the most secure method of key management where available first: FROST, iCloud Storage, Google secure sync, secure gift-wrap over public relays, and is compatible with Bluetooth and LAN transfer. It is fully compatible with FROST and can silently upgrade  once paired with a compatible FROST server. When FROST is activated, there are protections from various angles of attack including device compromise and server compromise. Even before FROST is activated, there is strong shoulder surfing resistance. 
 
 Users are made as secure as their preferences allow, so far as the spec is able, and where robust defaults can be chosen automatically without major compromise, they are. 
+
+`This project benefits from more eyes and more implementations. Devs and users are encouraged to pressure test claims made here to ensure reasonable security can be deployed widely in various hardware and software conditions. Pull requests and issue submissions are welcome.`
 
 ## Why this is not NIP-46
 

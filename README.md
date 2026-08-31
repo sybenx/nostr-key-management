@@ -18,5 +18,4 @@ NIP-46 does not specify a key transfer method nor about how to store it, whether
 
 ## Status
 
-Version 8.0-rc1 is a release candidate rather than a finished standard, and
-review is more useful right now than implementation, because three things are missing: the event kinds are unregistered placeholders that will change, there are no test vectors for any of the derivations, and Appendix A specifies the constraints on the 64-entry emoji table without containing the table, so the short authentication string is not yet reproducible across implementations. Disagreements and suspected errors belong in [SPEC_ISSUES.md](SPEC_ISSUES.md).
+Version 8.0-rc1 is a release candidate rather than a finished standard. Three things are missing: the event kinds are unregistered placeholders that may change, there are no test vectors for any of the derivations, and Appendix A specifies the constraints on the 64-entry emoji table without containing the table, so the short authentication string is not yet reproducible across implementations. Disagreements and suspected errors belong in [SPEC_ISSUES.md](SPEC_ISSUES.md).

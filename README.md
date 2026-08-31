@@ -4,7 +4,7 @@ This spec is a method to send and recieve Nostr secrets by utilizing [QR-codes](
 
 The primary purpose of this project is to allow for increased security of key transfer than the typical copy-paste method. Storage security is upgraded where possible, within reasonable constraints, to help the user to avoid the copy-paste method. This is a substantial upgrade to keeping a plain text nsec in a notes file. 
 
-It is a tiered system utilizing the most secure method first: FROST, iCloud Storage, Google secure sync, secure gift-wrap over public relays, and is compatible with Bluetooth and LAN transfer. It is fully compatible with FROST and can silently upgrade  once paired with a compatible FROST server. When FROST is activated, there are protections from various angles of attack including device compromise and server compromise. Even before FROST is activated, there is strong shoulder surfing resistance. 
+It is a tiered system utilizing the most secure method first: FROST, iCloud Storage, Google secure sync, secure gift-wrap over public relays, and is compatible with Bluetooth and LAN transfer. It is fully compatible with FROST and can silently upgraded to FROST from secure stroage after pairing with a compatible FROST server. When FROST is activated, there are protections from various angles of attack including device compromise and server compromise. Even before FROST is activated, there is strong shoulder surfing resistance. 
 
 Users are made as secure as their preferences allow, so far as the spec is able, and where robust defaults can be chosen automatically without major compromise, they are. 
 

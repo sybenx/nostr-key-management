@@ -8,7 +8,7 @@ It is a tiered system utilizing the most secure method first: FROST, iCloud Stor
 
 Users are made as secure as their preferences allow, so far as the spec is able, and where robust defaults can be chosen automatically without major compromise, they are. 
 
-`This project benefits from more eyes and more implementations. Devs and users are encouraged to pressure test claims made here to ensure reasonable convenience and security can be deployed widely in various hardware and software conditions. Pull requests and issue submissions are welcome.`
+`This project benefits from pressure testing. Devs and users are encouraged to pressure test claims made here to improve the reasonable convenience and security of the spec and its implementations. It benefits by being deployed widely and in various hardware and software conditions. Pull requests and issue submissions are welcome.`
 
 ## Why this is not NIP-46
 

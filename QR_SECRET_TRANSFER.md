@@ -211,9 +211,15 @@ being the obvious case. A profile MAY define such messages, subject to all of:
   and that naming MUST include the companions. A user who approved sending a key
   must not discover afterwards that a relay list or a device label went with it.
 - Not required for completion: a Receiver that never gets them MUST still hold a
-  usable payload, since delivery is best-effort (T9). A Receiver MUST NOT wait
-  for companions before allowing the user to confirm, and commits whichever have
-  arrived at that moment.
+  usable payload, since delivery is best-effort (T9). A Receiver MUST NOT make
+  the user's ability to confirm contingent on companions having arrived, and MUST
+  commit the payload whether or not any did.
+
+  It MAY wait a bounded interval *after* confirmation for companions still in
+  flight, provided the bound is short and expiry commits the payload regardless.
+  This is worth permitting: a device that arrives holding a key but no relay list
+  is functionally broken even though the transfer succeeded, and a second or two
+  after the user has already decided costs nothing they will notice.
 
 *Common misreading:* the ceiling is a property of the transport, not of the QR,
 and exchanging addresses does not lift it. The QR only ever carried a public
@@ -822,6 +828,35 @@ prompt of §9. A client MUST reject URIs with unknown `v`, missing `mode`, or
 missing `p`, and MUST abort before generating a burner if it does not implement
 the declared profile.
 
+**Role collision.** A client that has already committed to a role — the user
+chose to send, or to receive — MUST reject a URI whose `mode` implies that same
+role, and MUST say so rather than failing later. Two Senders or two Receivers
+cannot complete a session, and the failure is otherwise discovered several steps
+in. A client that has not yet committed adopts the complementary role from the
+`mode` it scanned, and has nothing to refuse.
+
+**Why `p` is required rather than optional.** It is hashed into the SAS (§6), and
+anything feeding that derivation must be unambiguously present: an optional field
+needs a canonical encoding for its absence, two implementations will choose
+differently, and the result is two devices computing different codes from
+identical sessions. That failure is silent and indistinguishable from an attack —
+matching inputs, mismatched screens, an abort nobody can diagnose. Requiring the
+field removes the whole class for a few characters of QR.
+
+It is also what lets the scanning party tell the truth. §9 and §11.2b require the
+prompt to name what will move, and the scanner knows only what the URI says; an
+absent profile forces an implementation to write "a secret" where it should
+write "your key". And it moves a profile mismatch to scan time, before any burner
+exists, rather than to the end of a ceremony the user has already completed —
+failing late at a security prompt teaches people that failures there are noise.
+
+With a single profile defined this is redundant today. It is required from the
+outset because a field that becomes mandatory later is a breaking change, and
+because a document built around an open extension point should not defer the one
+field that identifies the extension in use.
+
+Profiles MAY register additional `mode` values.
+
 ### 11.2a Carrying the URI in an `https` link
 
 A QR SHOULD encode the URI as an `https` link with the complete `qrst://` URI in
@@ -869,35 +904,6 @@ There is one compensation: landing on the origin puts it in the browser's addres
 bar, which is the only place in this protocol where the origin a party claims in
 §9 is corroborated rather than self-declared.
 
-**Role collision.** A client that has already committed to a role — the user
-chose to send, or to receive — MUST reject a URI whose `mode` implies that same
-role, and MUST say so rather than failing later. Two Senders or two Receivers
-cannot complete a session, and the failure is otherwise discovered several steps
-in. A client that has not yet committed adopts the complementary role from the
-`mode` it scanned, and has nothing to refuse.
-
-**Why `p` is required rather than optional.** It is hashed into the SAS (§6), and
-anything feeding that derivation must be unambiguously present: an optional field
-needs a canonical encoding for its absence, two implementations will choose
-differently, and the result is two devices computing different codes from
-identical sessions. That failure is silent and indistinguishable from an attack —
-matching inputs, mismatched screens, an abort nobody can diagnose. Requiring the
-field removes the whole class for a few characters of QR.
-
-It is also what lets the scanning party tell the truth. §9 and §11.2b require the
-prompt to name what will move, and the scanner knows only what the URI says; an
-absent profile forces an implementation to write "a secret" where it should
-write "your key". And it moves a profile mismatch to scan time, before any burner
-exists, rather than to the end of a ceremony the user has already completed —
-failing late at a security prompt teaches people that failures there are noise.
-
-With a single profile defined this is redundant today. It is required from the
-outset because a field that becomes mandatory later is a breaking change, and
-because a document built around an open extension point should not defer the one
-field that identifies the extension in use.
-
-Profiles MAY register additional `mode` values.
-
 ### 11.2b Presenting the code
 
 **A QR MUST NOT be displayed bare.** It is accompanied by a line, in the user's
@@ -933,10 +939,15 @@ reads as safety is worse than no mark: the browser padlock meant only that a
 connection was encrypted, users read it as "this site is trustworthy," and Chrome
 removed it in version 117 rather than keep explaining the difference.
 
-This specification defines no mark of its own. Identifying the code as belonging
-to this protocol is the job of the `qrst://` scheme, which a scanner reads;
-telling the user what is about to happen is the job of the sentence above, which
-a person reads. Neither job needs a logo.
+This specification defines no mark of its own. Identifying the code is the job of
+the URI, read from the fragment by a client that implements this protocol
+(§11.2a); telling the user what is about to happen is the job of the sentence
+above, which a person reads. Neither job needs a logo.
+
+Note that a generic scanner reads an `https` link and learns nothing
+protocol-specific from it, because the scheme sits inside the fragment where the
+origin never sees it. That is deliberate, and it is why the accompanying sentence
+carries the whole burden of telling a person what they are looking at.
 
 Implementations MUST NOT relax any consent step of §9 on the basis of anything
 rendered on or beside the code.

@@ -3,6 +3,17 @@
 Version 8.0-rc1
 Applies to: any client that holds a user's nsec (web, desktop, mobile)
 
+> **Sections 3 through 6 are superseded by
+> [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md) and are being removed from this
+> document.** They remain here only so that the §11 cross-references still
+> resolve while the split is finished. Where the two documents disagree — and
+> they disagree on the code format, the URI scheme, the event kinds, and the
+> existence of payload profiles — the transfer spec governs. Do not implement
+> §§3–6.
+>
+> §2 (storage), §7 (backup), §10 and §11 (server and threshold signing) are
+> current and are what this document will consist of once the split is done.
+
 Key words MUST, MUST NOT, SHOULD, MAY are normative.
 
 ---

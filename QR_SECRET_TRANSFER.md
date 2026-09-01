@@ -42,10 +42,9 @@ The exchange is:
 5. Only after the person confirms does the secret travel, encrypted end to end.
 6. Both throwaway keypairs are destroyed.
 
-This document specifies the mechanism. §§3–10 are written against a transport
-contract rather than against any particular network; §11 binds the mechanism to
-Nostr, which is the only binding specified here and the one all deployed
-implementations are expected to use.
+This document specifies the mechanism. §§3–10 state what it needs without
+assuming how it is provided; §11 is the Nostr binding, and is the only binding
+defined here.
 
 ## 2. Definitions
 
@@ -66,9 +65,19 @@ naming keyed to the QR would denote opposite parties in adjacent sections.
 
 ## 3. Transport contract
 
-The mechanism does not require Nostr. It requires a transport with the following
-properties, and §11 exists to demonstrate that Nostr has them. An implementer
-evaluating a different substrate checks it against this list.
+**Nostr is the only binding this document defines, and no other is anticipated.**
+The requirements below are written out anyway, because a specification that names
+what it needs from its transport can be checked against it, and one that simply
+assumes a transport cannot.
+
+Two things follow from having them written down. §11.1 maps each requirement to
+the NIP-59 machinery that satisfies it, which makes "is Nostr sufficient?" a
+question with an answer. And it makes the harder question askable too: any
+requirement of gift wrap that maps to nothing below is inherited rather than
+load-bearing, and either a simpler construction exists or the cost is being paid
+for nothing.
+
+A conforming transport MUST provide:
 
 - **T1 — Ephemeral addressing.** A party can be addressed at a freshly generated
   public key, with no prior registration of that key and no relationship between
@@ -184,14 +193,27 @@ being the obvious case. A profile MAY define such messages, subject to all of:
   not a licence: every extra message widens the traffic pattern P2's second
   argument is about, and a profile wanting more is describing a sync protocol
   rather than a transfer.
-- Sent only **after** the payload has been accepted, and only to the burner whose
-  payload was accepted. A companion message arriving before or instead of a
-  payload MUST be discarded.
+- **Sent alongside the payload, not after it.** The Sender emits them in the same
+  session without waiting for anything; the Receiver holds them under P6 exactly
+  as it holds the payload, keyed by the sending burner, and commits them only
+  together with the payload they arrived beside. Companions from a burner whose
+  payload is never committed are discarded with it.
+
+  They cannot be sent after acceptance: the Receiver zeroizes its burner at the
+  moment it commits and ACKs (§7 step 17, §8 step 17), and the ACK is how the
+  Sender would learn acceptance had happened — so a rule to send afterwards
+  addresses a channel that no longer exists. Holding-then-committing-together
+  delivers the property that rule was reaching for (nothing accepted without a
+  payload) without needing that window, and has the further merit that the
+  release consent of §9 authorises the payload and its companions in one act
+  rather than authorising something that happens later.
 - **Covered by the same release consent.** §9's prompt names what will be sent,
   and that naming MUST include the companions. A user who approved sending a key
   must not discover afterwards that a relay list or a device label went with it.
 - Not required for completion: a Receiver that never gets them MUST still hold a
-  usable payload, since delivery is best-effort (T9).
+  usable payload, since delivery is best-effort (T9). A Receiver MUST NOT wait
+  for companions before allowing the user to confirm, and commits whichever have
+  arrived at that moment.
 
 *Common misreading:* the ceiling is a property of the transport, not of the QR,
 and exchanging addresses does not lift it. The QR only ever carried a public
@@ -259,6 +281,14 @@ not recognise.
 
 Profiles are defined outside this document. `nostr-nsec` and `frost-share` are
 defined in the Nostr key storage specification.
+
+**Why the payload is parameterised at all.** Not in anticipation of users outside
+this ecosystem — the transport is Nostr relays, so anyone able to adopt this has
+already adopted Nostr. It is parameterised because *this* ecosystem has more than
+one secret worth moving between devices, and does today: a whole identity key and
+a threshold share are different sizes, need different acceptance checks, and must
+be described to the user in different words. A specification handling only the
+first would have to special-case the second within a year of being written.
 
 ### 5.1 Non-normative example
 
@@ -418,14 +448,17 @@ Receiver                                    Sender
                                                declines or 5 failures → abort,
                                                zeroize SND
                                            14. send PAYLOAD → RCV.pub
-15. receive; verify attribution; hold keyed
-    by sending burner. MUST NOT commit
+15. receive payload and any companions;
+    verify attribution; hold keyed by
+    sending burner. MUST NOT commit
 16. if more than one payload is held, user
     selects by code; applies the P4 check;
     renders per P5 ("Log in as @name?");
     asks to confirm
-17. confirmed → commit; send ACK → SND.pub;
-    zeroize RCV and every other held payload
+17. confirmed → commit payload and the
+    companions held beside it; send ACK
+    → SND.pub; zeroize RCV and every other
+    held payload
     declined → discard all, abort
                                            18. zeroize SND on ACK or after 60 s
 ```
@@ -474,9 +507,10 @@ Sender                                      Receiver
      next pending request, if any, or keep
      waiting; abort only at 10 min)
 14. send PAYLOAD → RCV.pub
-                                           15. receive; verify attribution and
-                                               that the sending burner is the
-                                               SND.pub from the QR, else discard
+                                           15. receive payload and any companions;
+                                               verify attribution and that the
+                                               sending burner is the SND.pub from
+                                               the QR, else discard
                                            16. apply P4 check; render per P5;
                                                ask to confirm
                                            17. confirmed → commit; send ACK
@@ -788,6 +822,53 @@ prompt of §9. A client MUST reject URIs with unknown `v`, missing `mode`, or
 missing `p`, and MUST abort before generating a burner if it does not implement
 the declared profile.
 
+### 11.2a Carrying the URI in an `https` link
+
+A QR SHOULD encode the URI as an `https` link with the complete `qrst://` URI in
+the **fragment**:
+
+```
+https://<origin>/<path>#qrst://<npub>?v=1&mode=…&p=…
+```
+
+**Why not the scheme alone.** A page cannot register a URI scheme, and a phone's
+stock camera or a third-party scanner app hands an unknown scheme to a web search
+rather than to an application. Android App Links and iOS Universal Links route a
+verified `https` URL to an installed app and fall back to the browser; a custom
+scheme gets a disambiguation dialog at best. A QR carrying only `qrst://` is
+therefore unusable by web clients and by the generic scanners many people scan
+with, which is most of the ways this code will actually be read.
+
+**Why the fragment.** Fragments are not sent in HTTP requests. The burner key and
+relay list therefore never reach the origin's server, its logs, or any
+intermediary — the link is addressed to a host that never learns what it carries.
+
+**Requirements.**
+
+- A client whose own camera reads the code MUST extract the URI from the fragment
+  and MUST NOT make the request. The page load is the fallback for scanners that
+  do not understand this protocol, never the normal path.
+- The `origin` SHOULD be the one already serving the client that drew the code.
+  No party is introduced that the user was not already trusting with the transfer.
+- The landing page SHOULD be a **bounce page**: it reads its own fragment, offers
+  the `qrst://` deep link for anyone holding a native client, offers the URI as
+  copyable text for any other client, and acts as a party itself only if the
+  visitor chooses that origin's own client. Because the fragment never reaches the
+  server, such a page can be entirely static — this path introduces no operator,
+  and §3's claim survives it.
+- `qrst://` remains valid and is the RECOMMENDED form for deep links and for
+  copied text (§12.1).
+
+**Consequence for consent.** A scanned `https` code opens a page, so a hostile
+code can deliver a hostile page which is then the Receiver. The extra friction
+§12.1 requires for a pasted URI that makes the local device the Sender applies
+identically to a scanned `https` code that was not read by the client's own
+camera.
+
+There is one compensation: landing on the origin puts it in the browser's address
+bar, which is the only place in this protocol where the origin a party claims in
+§9 is corroborated rather than self-declared.
+
 **Role collision.** A client that has already committed to a role — the user
 chose to send, or to receive — MUST reject a URI whose `mode` implies that same
 role, and MUST say so rather than failing later. Two Senders or two Receivers
@@ -803,7 +884,7 @@ identical sessions. That failure is silent and indistinguishable from an attack 
 matching inputs, mismatched screens, an abort nobody can diagnose. Requiring the
 field removes the whole class for a few characters of QR.
 
-It is also what lets the scanning party tell the truth. §9 and §11.2a require the
+It is also what lets the scanning party tell the truth. §9 and §11.2b require the
 prompt to name what will move, and the scanner knows only what the URI says; an
 absent profile forces an implementation to write "a secret" where it should
 write "your key". And it moves a profile mismatch to scan time, before any burner
@@ -817,7 +898,7 @@ field that identifies the extension in use.
 
 Profiles MAY register additional `mode` values.
 
-### 11.2a Presenting the code
+### 11.2b Presenting the code
 
 **A QR MUST NOT be displayed bare.** It is accompanied by a line, in the user's
 language, stating the direction and what will move: "Scanning this sends your key
@@ -1050,33 +1131,43 @@ A client MAY implement either substitution or both.
 
 ### 12.1 Copying the URI
 
-The showing party offers its `qrst://` URI as selectable text; the other party
-pastes it. This is the RECOMMENDED substitution wherever the two devices share a
-clipboard — the same machine, a desktop and a virtual machine on it, or two
-devices in an ecosystem with clipboard sync — because it requires no additional
-protocol machinery whatsoever.
+The showing party offers its URI as selectable text; the other party pastes it.
+This works wherever text can travel between the two devices at all — a shared
+clipboard on one machine or across an ecosystem, but equally a message or email
+the user sends to themselves. That last case is what makes paste the channel of
+last resort rather than a convenience: two camera-less machines with no shared
+clipboard still have a way through, provided a person can move a line of text.
+
+**Clients MUST accept either form.** A paste field takes a bare `qrst://` URI or
+an `https` link per §11.2a, from which the URI is read out of the fragment.
+Parsing either is trivial and requiring one would strand users of the other.
+
+**Clients SHOULD offer `qrst://` for copying.** It is shorter, and it does not
+present as something to tap. An `https` link sent in a message looks like an
+ordinary link and invites a reflex; a `qrst://` string looks like configuration
+and invites reading. Given that a URI is remotely deliverable in a way a QR is
+not, the less tappable form is the safer thing to put behind a copy button.
 
 The URI MUST be validated before use: the bech32 checksum on the burner key
 catches transcription errors in the part most likely to carry them.
 
-**Clients MAY offer the URI as an `https` link instead, but SHOULD NOT make that
-the only form.** An `https` link is tappable, and that convenience costs a
-domain: universal-link and app-link association requires a host the implementer
-operates and serves an association file from, and anyone opening the link
-without the application installed discloses a burner key and a relay list to
-that host. A specification whose premise is that no party operates
-infrastructure should not require one so that a link is clickable. Plain URI
-text is the interoperable baseline.
+**Sending it through a third party is permitted and costs nothing structural.**
+The URI is not secret (§15) — it is a public key and some transport hints — so a
+messaging provider that sees it learns nothing that helps it. It does learn
+*metadata*: that a pairing happened at that moment, and which relays are involved.
+That is a real if minor leak, and it is a further reason the URI must never be
+permitted to carry payload material.
 
-**Additional friction for pasted URIs that make the local device the Sender.**
-A QR implies physical proximity: someone must place it in front of the user. A
-URI does not — it can be sent in a message, which is the delivery channel every
-credential-theft campaign already uses. Where a pasted URI would make the local
-device the Sender (`mode=offer`), and the URI did not come from the device's own
-camera, the client MUST present the release consent of §9 with an explicit
-statement that the request did not originate from a scan, and MUST NOT allow
-that consent to be remembered or defaulted. This does not remove the residual
-risk of §9; it declines to widen it silently.
+**Additional friction for URIs that make the local device the Sender.** A QR read
+by the client's own camera implies physical proximity: someone placed it in front
+of the user. A pasted URI does not — it can be sent in a message, which is the
+delivery channel every credential-theft campaign already uses. Where a URI would
+make the local device the Sender (`mode=offer`) and did not come from the
+device's own camera, the client MUST present the release consent of §9 with an
+explicit statement that the request did not originate from a scan, and MUST NOT
+allow that consent to be remembered or defaulted. Per §11.2a this applies equally
+to an `https` code opened from an external scanner. It does not remove the
+residual risk of §9; it declines to widen it silently.
 
 ### 12.2 Channels this specification does not define
 
@@ -1263,6 +1354,12 @@ wrong about the mathematics, and no protocol of this shape can.
 Nothing in §6 is new. The commit-then-reveal short authentication string is
 ZRTP's, by way of Matrix, and is cited as such. What is unusual here is the
 substrate, and the comparisons below are the honest way to show which is which.
+
+They also establish something worth stating plainly: **there is no standard way
+to move a credential between devices**, because the dominant standard is built on
+the premise that credentials do not move. That is not an oversight in those
+designs — it is their central commitment, and it is why none of them can be
+borrowed here.
 
 ### WebAuthn hybrid transport (caBLE v2)
 

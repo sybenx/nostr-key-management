@@ -1,27 +1,65 @@
 # Nostr Key Transfer & Storage
 
-The most notable thing about this is the serverless secret transferred via QR.
+The most notable thing here is that the secret moves over public relays. You do
+not run a server, you do not register with one, and the relay cannot read what it
+carries or tell who sent it. Every other way of doing this needs somebody to
+operate the thing in the middle.
 
-This spec is a method to send and recieve Nostr secrets by utilizing [QR-codes](https://en.wikipedia.org/wiki/QR_code) and [gift-wrap](https://github.com/nostr-protocol/nips/blob/master/17.md) messages while maintaining strong shoulder surfing resistance. It describes a method of transfer for nsec identities, relay information, and other secrets with reasonably high security.
+Two specs live in this repo.
 
-The primary purpose of this project is to encourage increased security for key transfer than the typical copy-paste method. under this spec, storage security is upgraded where possible, within reasonable constraints. This is a substantial upgrade to keeping a plain text nsec in a notes file. 
+**[QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md)** is the transfer mechanism, and
+it is the one to read first. One device shows a QR, the other scans it, and the
+secret travels inside a [gift-wrapped](https://github.com/nostr-protocol/nips/blob/master/59.md)
+message over public relays. The QR holds a throwaway public key and nothing else,
+so a photograph of it is worthless. Before the secret is released, the sending
+device makes you type a five digit code shown on the receiving device, which is
+what stops somebody sitting in the middle. It carries nsec identities, FROST
+shares, and anything else a profile defines.
 
-It is a tiered system utilizing the most secure method first: FROST, iCloud Storage, Google secure sync, passcodes, and secure gift-wrap over public relays, and is compatible with Bluetooth and LAN transfer. It is fully compatible with FROST and can silently upgraded to FROST from secure stroage after pairing with a compatible FROST server. When FROST is activated, there are protections from various angles of attack including device compromise and server compromise. 
+**[NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md)** is storage, backup, and
+optional FROST threshold signing. Sections 3 through 6 of it are superseded by
+QR_SECRET_TRANSFER.md and are being removed. Where the two disagree today, the
+transfer spec wins.
 
-Users are made as secure as their preferences allow, so far as the spec is able, and where robust defaults can be chosen automatically without major compromise, they are. 
-
-`This project benefits from devs and users pressure testing the claims of the spec. Failure modes of the spec will be handled within reason to improve the spec. General structural robustness of the spec will increase the reasonable convenience and security of users as far as it is widely deployed and followed, in various hardware and software conditions. Pull requests and issue submissions should be used where possible.`
+The point of all this is to be better than copy-pasting an nsec between apps, and
+better than leaving one in a notes file. Storage is upgraded to whatever the
+device actually supports, and nothing blocks you from logging in if your device
+supports none of it. Where a sensible default can be picked for the user without
+giving something up, it is picked for them.
 
 ## Why this is not NIP-46
 
-NIP-46 is a signing protocol for a remote signer. A remote signer has to be reachable for every single event signature, whereas a device that has received a key under this spec does not *need* a second device at all. If FROST is activated, only 2 of N devices are required and special device authorizations in the spec allow for fully offline signing from a single device. 
+NIP-46 is a signing protocol for a remote signer. A remote signer has to be
+reachable for every single event signature, whereas a device that has received a
+key under this spec does not *need* a second device at all. If FROST is
+activated, only 2 of N devices are required, and special device authorizations in
+the spec allow for fully offline signing from a single device.
 
-NIP-46 does not specify a key transfer method nor about how to store it, whether it is backed up, or what happens when the machine is lost. This project is intended to fill some or all of those gaps. 
+NIP-46 does not specify a key transfer method, nor how to store a key, whether it
+is backed up, or what happens when the machine is lost. This project is intended
+to fill some or all of those gaps.
 
-# What this project is not
+## What this project is not
 
-I do not intend to implement this spec directly here or elsewhere. This spec is meant as a reference for other implementations to follow. 
+I do not intend to implement this spec directly here or elsewhere. This spec is
+meant as a reference for other implementations to follow.
+
+The transfer mechanism is not new cryptography. The commit-then-reveal code
+comparison is ZRTP's, by way of Matrix, and it is cited as such. What is unusual
+is running it over infrastructure nobody operates for the purpose.
 
 ## Status
 
-Version 8.0-rc1 is a release candidate rather than a finished standard. Three things are missing: the event kinds are unregistered placeholders that may change, there are no test vectors for any of the derivations, and Appendix A specifies the constraints on the 64-entry emoji table without containing the table, so the short authentication string is not yet reproducible across implementations. Disagreements and suspected errors belong in [SPEC_ISSUES.md](SPEC_ISSUES.md).
+QR_SECRET_TRANSFER.md is version 1.0-draft. The event kinds are placeholders and
+will change, and there are no test vectors yet.
+
+NOSTR_KEY_MANAGEMENT.md is version 8.0-rc1 and is mid-split. It still contains
+the transfer sections that QR_SECRET_TRANSFER.md replaces.
+
+This project benefits from devs and users pressure testing the claims of the
+spec. Failure modes will be handled within reason to improve it. Structural
+robustness increases the convenience and security of users as far as the spec is
+widely deployed and followed, across various hardware and software conditions.
+Disagreements and suspected errors belong in
+[SPEC_ISSUES.md](SPEC_ISSUES.md); pull requests and issue submissions should be
+used where possible.

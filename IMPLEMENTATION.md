@@ -20,14 +20,14 @@ burner handshake, the QR, the typed code, gift-wrapped transfer over relays, the
 offline fallback. Self-contained client code with no infrastructure behind it and
 nothing for an operator to run. This ships first and is marketed as the product.
 
-**Storage and backup (NKM §2, §7) are a drop-in too**, and belong in the same
+**Storage and backup (NKM §2, NKM §4) are a drop-in too**, and belong in the same
 package — the storage ladder is what a key does *after* it arrives, and shipping
 transfer without it means every adopter invents their own at-rest story.
 
-**Threshold signing (NKM §11) cannot be a single drop-in, ever.** FROST at
+**Threshold signing (NKM §7) cannot be a single drop-in, ever.** FROST at
 `t = 2` with index 1 held by a server is not a client feature, it is a
 distributed system. A package implementing the device half is inert without a
-server to point at. So §11 is two deliverables — a client and a reference server
+server to point at. So NKM §7 is two deliverables — a client and a reference server
 — and the honest framing is "run this, then enable that," not "install this."
 
 **Native apps are a fourth thing.** A JavaScript package cannot serve the iOS and
@@ -78,7 +78,7 @@ const event  = await keys.signer.signEvent(draft)
 `keys.signer` satisfies NIP-07 exactly, so `window.nostr = keys.signer` is a
 valid line of user code and every existing library keeps working. `keys.login()`
 is QRST Flow A — the browser is always the Receiver showing the QR, because a
-browser cannot scan reliably and, per NKM §11.1, is always `restricted` anyway.
+browser cannot scan reliably and, per NKM §7.1, is always `restricted` anyway.
 
 Everything else is progressive disclosure on the same object, and none of it is
 required to log in:
@@ -86,18 +86,18 @@ required to log in:
 ```ts
 keys.storageLevel                     // 1 | 2 | 3, per NKM §2.1
 keys.lock                             // 'device' | 'launch' | `idle:${number}`
-keys.export({ password })             // NKM §7.1, always ncryptsec, privileged
-keys.backup.connect(url, password)    // NKM §11.2 → §7.2
-keys.backup.recover(url, password)    // NKM §11.10 — throws in a browser, by spec
-keys.devices.list() / .remove(id)     // NKM §11.1, §11.11
-keys.threshold.enable() / .disable()  // NKM §11.5, §11.15 — trusted devices only
-keys.on('lock', s => …)               // NKM §11.16 states, for the indicator
-keys.on('alert', a => …)              // NKM §11.13 digests and alerts
+keys.export({ password })             // NKM §4.1, always ncryptsec, privileged
+keys.backup.connect(url, password)    // NKM §7.2 → NKM §4.2
+keys.backup.recover(url, password)    // NKM §7.10 — throws in a browser, by spec
+keys.devices.list() / .remove(id)     // NKM §7.1, NKM §7.11
+keys.threshold.enable() / .disable()  // NKM §7.5, NKM §7.15 — trusted devices only
+keys.on('lock', s => …)               // NKM §7.16 states, for the indicator
+keys.on('alert', a => …)              // NKM §7.13 digests and alerts
 ```
 
 Methods a browser may not perform are present on the type and reject at runtime
 with a named error (`RestrictedRoleError`) rather than being absent. A missing
-method reads as an incomplete library; a refusal citing NKM §11.13 teaches the
+method reads as an incomplete library; a refusal citing NKM §7.13 teaches the
 integrator what the role system is for.
 
 ### Tier 2 — headless
@@ -106,7 +106,7 @@ integrator what the role system is for.
 const session = createTransferSession({
   role: 'receiver', mode: 'offer', profile: 'nostr-nsec', …adapters
 })
-session.qrUri                          // QRST §11.2, and the https form of §11.2a
+session.qrUri                          // QRST §11.2, and the https form of QRST §11.2a
 session.on('code', digits => …)        // display; the peer types it
 session.on('verified', () => …)
 ```
@@ -129,11 +129,11 @@ exactly one thing to reimplement and exactly one suite to prove it against.**
 
 | Package | Contains | Depends on |
 |---|---|---|
-| `@qrst/core` | Every derivation and state machine, as pure functions over injected randomness and clock. Commit/nonce/reveal and code derivation (QRST §6), URI parse and build (§11.2, §11.2a), message construction and validation (§11.4), Flow A/B state machines (§7, §8), profile registry (§5), blob-store key schedule (NKM §7.2), FROST wrappers, refresh algebra (NKM §11.9), epoch ordering. No I/O, no DOM, no `fetch`, no timers. | `@noble/curves`, `@noble/hashes`, `@scure/base` |
+| `@qrst/core` | Every derivation and state machine, as pure functions over injected randomness and clock. Commit/nonce/reveal and code derivation (QRST §6), URI parse and build (QRST §11.2, §11.2a), message construction and validation (QRST §11.4), Flow A/B state machines (QRST §7, §8), profile registry (QRST §5), blob-store key schedule (NKM §4.2), FROST wrappers, refresh algebra (NKM §7.9), epoch ordering. No I/O, no DOM, no `fetch`, no timers. | `@noble/curves`, `@noble/hashes`, `@scure/base` |
 | `@qrst/web` | The adapters that make `core` run in a browser: storage per NKM §2.3, relay transport with the outbox of QRST §11.5, WebAuthn gate, `navigator.storage.persist()`, camera and fragment parsing. Exports `NostrKeys`. | `core` |
-| `@qrst/ui` | The screens the specs write copy for: QR with the direction line of §11.2b, the code entry field with its visible length, the release prompt of §9 with the origin as punycode, the lock indicator (NKM §11.16). Framework-free custom elements. | `web` |
+| `@qrst/ui` | The screens the specs write copy for: QR with the direction line of QRST §11.2b, the code entry field with its visible length, the release prompt of QRST §9 with the origin as punycode, the lock indicator (NKM §7.16). Framework-free custom elements. | `web` |
 | `qrst-login` | Tier 0. One IIFE bundle, no build step for the adopter, sets `window.nostr`. | `ui` |
-| `@qrst/server` | The reference blob store (NKM §7.2) and co-signer (§11.6) with the audit rules of §11.13. One codebase, two targets: Cloudflare Worker and Node. | `core` |
+| `@qrst/server` | The reference blob store (NKM §4.2) and co-signer (NKM §7.6) with the audit rules of NKM §7.13. One codebase, two targets: Cloudflare Worker and Node. | `core` |
 | `@qrst/vectors` | Generates the normative test vectors from `core`; runs them as a conformance suite any implementation can execute. | `core` |
 
 `core` communicates with its host by returning **commands as data**, never by
@@ -222,9 +222,9 @@ rather than of writing.
 randomness: the code derivation from profile id, both burner keys and both nonces
 through to the five digits; the payload ceiling at exactly the declared maximum,
 where NIP-44's power-of-two padding makes an off-by-one-chunk error invisible
-everywhere else; the NKM §7.2 ladder from password and salt through `K_pw`,
+everywhere else; the NKM §4.2 ladder from password and salt through `K_pw`,
 `K_enc`, `K_auth`, `K_wrap` to a decryptable blob; `ncryptsec` at both `log_n`
-values; and for §11, a full activation, one refresh, and a joint issuance with
+values; and for NKM §7, a full activation, one refresh, and a joint issuance with
 the parity case covered explicitly, since odd-y is where an independent
 implementation will first diverge.
 
@@ -247,20 +247,20 @@ count is one.
 
 **v0.1 — the actual drop-in.** NKM §2 storage ladder with silent probing and
 in-place upgrade; QRST Flow A and B over relays; the typed code and its attempt
-budget; the multiple-responder notice; the offline fallback; NKM §7.1 `ncryptsec`
+budget; the multiple-responder notice; the offline fallback; NKM §4.1 `ncryptsec`
 export; NIP-07 signer; tier 0 bundle. No server, no account, nothing to run.
 Ships the first vector files.
 
-**v0.2 — backup.** NKM §7.2 blob store, `@qrst/server` on a Worker, §11.10
+**v0.2 — backup.** NKM §4.2 blob store, `@qrst/server` on a Worker, NKM §7.10
 recovery in a native context only, and the recovery-delay notices. The server is
-small and stateless and is what makes §11 credible later.
+small and stateless and is what makes NKM §7 credible later.
 
-**v0.3 — device list.** NKM §11.1 enrollment keys, kind 30242, roles assigned by
-the Sender's consent box, per-device settings, the transfer records of §3.3
-surfaced. Still no threshold; this is the bookkeeping §11 needs and it has
+**v0.3 — device list.** NKM §7.1 enrollment keys, kind 30242, roles assigned by
+the Sender's consent box, per-device settings, the transfer records of NKM §3.2
+surfaced. Still no threshold; this is the bookkeeping NKM §7 needs and it has
 standalone value as a "where am I logged in" screen.
 
-**v0.4 — threshold.** NKM §11.4–§11.15. The largest step by a wide margin, and
+**v0.4 — threshold.** NKM §7.4–NKM §7.15. The largest step by a wide margin, and
 the one that should not start until v0.1–v0.3 have been used by somebody.
 **Blocked on a spec question:** the `frost-share` profile is marked
 do-not-implement, because share issuance delivers two partials from two different
@@ -277,18 +277,18 @@ worth writing.
 over BIP-340 in JavaScript. `@noble/curves` provides the curve and Schnorr
 primitives, not the threshold protocol. Writing RFC 9591 plus taproot parity
 handling by hand is a reviewable-crypto project with a review budget attached.
-The better move is to compile the ciphersuite NKM §11.4 already names —
+The better move is to compile the ciphersuite NKM §7.4 already names —
 `frost-secp256k1-tr`, Zcash Foundation, Rust, on crates.io — to WebAssembly and
 use it in both browser and Node. That is byte-for-byte the construction the spec
 points at rather than a reimplementation of it, and it removes the largest single
 source of interoperability risk. Cost is a Rust toolchain in the build and a few
-hundred kilobytes in the §11 bundle, acceptable because §11 is opt-in and lazily
+hundred kilobytes in the NKM §7 bundle, acceptable because NKM §7 is opt-in and lazily
 loaded.
 
 **scrypt at `log_n = 18` in a browser.** 256 MiB per guess is the point, but
 pure-JS scrypt at that size is tens of seconds and may simply fail on mobile
-Safari. It needs a WASM scrypt in a worker with progress reporting. NKM §11.10
-already forbids browser recovery, which removes most of the exposure, but §7.1
+Safari. It needs a WASM scrypt in a worker with progress reporting. NKM §7.10
+already forbids browser recovery, which removes most of the exposure, but NKM §4.1
 export runs in browsers and the `log_n = 17` allowance for low-memory devices
 must be wired to a real capability probe rather than a user-agent guess.
 
@@ -297,7 +297,7 @@ IndexedDB and calls `navigator.storage.persist()`, but persistence can be
 declined and eviction is real. Integrators will report this as data loss. The
 library should surface it as an explicit state (`keys.durability`) and the docs
 should say plainly that a browser is a device that can disappear — which is
-precisely why §11 makes browsers `restricted` and re-enrollable.
+precisely why NKM §7 makes browsers `restricted` and re-enrollable.
 
 **The phishing residual is a library problem too.** QRST §15 is candid that a
 hostile party acting as Receiver is stopped only by a user declining the release
@@ -320,7 +320,7 @@ risks reintroducing the operator the whole design avoids. It should be a static
 file with a CI check that it makes no network calls.
 
 **Bundle size is an adoption gate.** Tier 0 competes with a script tag people add
-casually. Budget: base bundle under 60 KB gzipped with §11 in a separate async
+casually. Budget: base bundle under 60 KB gzipped with NKM §7 in a separate async
 chunk, enforced in CI, or the first bug report is "this doubled my bundle."
 
 ---
@@ -337,8 +337,8 @@ chunk, enforced in CI, or the first bug report is "this doubled my bundle."
 3. **License.** The repository carries one; packages should state it explicitly
    per-package, and it is worth confirming it is the license you want on code as
    well as on prose.
-4. **Whether §11's server is in scope for you at all.** A specification can name a
-   server and let others build it. A library that promises §11 and ships no server
+4. **Whether NKM §7's server is in scope for you at all.** A specification can name a
+   server and let others build it. A library that promises NKM §7 and ships no server
    is stuck. Deciding now changes the v0.2 milestone.
 5. **What relationship this has to the existing client.** An implementation
    already exists and is where the notes that shaped these specs came from.

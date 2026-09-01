@@ -17,9 +17,9 @@ what stops somebody sitting in the middle. It carries nsec identities, FROST
 shares, and anything else a profile defines.
 
 **[NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md)** is storage, backup, and
-optional FROST threshold signing. Sections 3 through 6 of it are superseded by
-QR_SECRET_TRANSFER.md and are being removed. Where the two disagree today, the
-transfer spec wins.
+optional FROST threshold signing. It registers the two payload profiles the
+transfer spec uses: `nostr-nsec` for a whole identity key, and `frost-share` for
+a single threshold share.
 
 The point of all this is to be better than copy-pasting an nsec between apps, and
 better than leaving one in a notes file. Storage is upgraded to whatever the
@@ -53,8 +53,10 @@ is running it over infrastructure nobody operates for the purpose.
 QR_SECRET_TRANSFER.md is version 1.0-draft. The event kinds are placeholders and
 will change, and there are no test vectors yet.
 
-NOSTR_KEY_MANAGEMENT.md is version 8.0-rc1 and is mid-split. It still contains
-the transfer sections that QR_SECRET_TRANSFER.md replaces.
+NOSTR_KEY_MANAGEMENT.md is version 8.0-rc1. The `frost-share` profile in §3.2 is
+marked do-not-implement: share issuance hands a device two partials from two
+different parties, and that does not fit the transfer spec's one-sender model
+yet.
 
 This project benefits from devs and users pressure testing the claims of the
 spec. Failure modes will be handled within reason to improve it. Structural

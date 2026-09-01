@@ -1,78 +1,120 @@
-# Key Management — Overview
+# Overview
 
-Companion to `NOSTR_KEY_MANAGEMENT.md` (the spec). This is the short version: what the user sees, and what's underneath.
+The readable version. [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md) and
+[NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md) are the normative documents
+and govern wherever this disagrees with them.
+
+This document deliberately avoids repeating parameters — code lengths, event
+kinds, timeouts. Those live in the specs, and an overview that copies them goes
+stale the first time one changes.
 
 ---
 
 ## The one idea
 
-Your Nostr key lives on your devices. To add a device, you scan a QR and tap once. Everything else — encryption, sync, backup, threshold signing — is stacked on top and can never take that away. If a device lacks a feature, it falls back to the layer below. Nothing blocks login.
+Your key lives on your devices. To put it on another one, you show a code on the
+first, read it with the second, and type a short number back. Everything else —
+encryption at rest, platform sync, backup, threshold signing — stacks on top of
+that and can never take it away. If a device can't do one of those things, it
+falls back to the layer below. Nothing stops you logging in.
 
----
+## What a person actually does
 
-## What the user sees
+**Adding a device.** One device shows a QR. The other reads it, by camera or by
+pasting the link. Then the device that *has* the key asks you to type a short
+number displayed on the device that's receiving it, and tells you plainly that
+you are handing over your identity, not signing in. The receiving device shows
+you whose account you're about to become, and you confirm.
 
-**Adding a device**
-1. New device shows a QR. (No camera on the new device? Show the QR anyway — the phone scans it. No camera anywhere? Type a three-word code instead.)
-2. Existing device scans it and shows four emoji plus a number, with what the new device claims to be: "Send your key to a browser at example.com showing 🦊🌊🔑🍕?" There's an unchecked box, "Trust this device (my own app)" — tick it for your own laptop app, leave it for websites. User taps Send.
-3. New device shows the emoji; user taps the matching one and sees "Log in as @you?" — Yes.
-4. Done. One tap on each device.
+The number matters more than it looks. Comparing two screens is something people
+skip; typing a number is something you cannot do without having read the other
+screen. That's the difference between a check that works and one that only
+appears to.
 
-If the existing device is the one without a camera (a PC), it shows the QR and the phone scans it; then the PC asks "Approve login for the device showing 🦊🌊🔑🍕?" and the user taps Approve.
+**Storage.** Nothing to do. The app uses the strongest thing the device has —
+platform keystore, a passkey-derived key, an encrypted browser key, or plain
+storage on a device with none of those — and quietly upgrades if that changes.
+Logging into the device is the unlock; the app doesn't ask again for ordinary
+use. Rare, consequential actions — sending your key elsewhere, exporting it —
+always ask, and that permission lasts for exactly one transfer.
 
-**Storage and unlocking**
-Nothing to do. The app uses Face ID / Touch ID / Windows Hello / a passkey if the device has one, and plain storage if it doesn't. It quietly upgrades later if the user sets one up.
+**Backup.** Offered once at the end of setup: an encrypted file or printable
+code, or a server. Skippable, and if you skip it the app never nags — the status
+just sits in settings.
 
-By default, logging into the device is the unlock — the app never asks again for normal posting, on any platform. Users who want more can pick "prompt at launch" or an idle timer; the choice travels with the key to new devices. Rare, high-consequence actions (sending your key to another device, exporting, rotating) always ask for a biometric or OS credential, whatever the setting.
+**Threshold signing (optional).** Splits the key so no single device, site or
+server holds a usable copy, and makes it possible to actually revoke a device.
+You need at least two devices, or a device and a server. The trade is that
+posting now needs something else reachable, and whatever co-signs for you sees
+what you post.
 
-If a QR or code gets scanned by more than one device, the screen that showed it says so — softly. The emoji check still decides who's real; the notice just tells you someone at the next table may have tried.
-
-**Sync**
-Nothing to do. On iPhone and Mac the key follows the user through iCloud Keychain. On Android it comes back through Google's app backup. Signing into a new phone in the same ecosystem just works — no QR.
-
-**Backup**
-At the end of onboarding: "Back up your key?" — export an encrypted file/printable QR, or connect a server. Skippable, and the app doesn't nag: backup status just sits in settings. Exports are always encrypted with a password of the user's choosing; the app never writes a raw key to disk.
-
-**Connecting a server** (optional)
-1. Scan the server's QR. Enter a password — any password; it's the user's call. The app offers a six-word generated phrase, pre-filled, which you can keep or replace. The screen says plainly: if this server is ever hacked, this password is the only thing protecting your key.
-2. Choose:
-   - **Backup only (default)** — key stays on your devices, server holds an encrypted copy, posting works offline.
-   - **Threshold signing** — the key is split so no device or website holds a usable copy (the encrypted backup is the one full copy); any device can be revoked. Only offered if you have at least two devices, one of them a native app. Your server sees what your other devices post (not DM contents), and reading DMs on those devices needs the server or another device reachable, same as posting. Offline mode is for native apps, turned on ahead of time with a tap from another device.
-
-**Recovering after losing everything**
-Enter server URL and password. In threshold mode there's a safety delay (default a day): your other devices get told a recovery started and can approve it instantly or cancel it — so a stolen password alone can't silently become your key. With no devices left, the delay just passes and you're in.
-
-**Threshold mode, day to day**
-- Posts sign through the server, or another of your devices — whichever is reachable, over internet, Wi-Fi, or Bluetooth.
-- Nothing reachable: the post waits and signs when something is; DMs wait to be read. Taking a laptop somewhere with no signal? Flip **Offline mode** on it first; another device taps Allow. Flip it off when you're back. Websites can't do Offline mode — a site holding two pieces would hold the key for good.
-- Settings → Devices → Remove actually revokes that device.
-- Settings → Devices → Remove site: kicks it out and re-keys everyone else, without the key ever being reassembled. Removing a *hacked server* does a full re-split instead, because a stolen piece can't be un-stolen by re-keying around it. Removing a *phone or laptop you lost* instead does a full re-split (briefly reassembles the key on your other trusted device, then splits it fresh) — because a lost device's old piece stays mathematically linked to everyone's current pieces otherwise. This is the answer to "my server got hacked" or "that website was sketchy."
-- Removing a website removes it everywhere you'd logged into it (per site, not per browser).
-- Websites you've logged into can read your DMs (through the server) as long as they're enrolled. The devices screen shows what each one has been doing, the server warns you if a site starts reading in bulk, and there's a "Websites can read DMs" switch.
-- Changing the backup password or adding a second server never reassembles the key; only "turn threshold off" and "remove a lost device" do.
-- Optional, if you have two native apps: "Two-device approval" — adding a device or turning threshold off needs a tap on both. Without it, a fully compromised phone plus your server is the key, same as a compromised phone is today.
-- Optional: "Keep the full key on this device" for people who want their phone to work like before. Off by default; that device then can't be revoked.
-- A lock in settings shows the state by colour *and* shape: green/check = split, green/phone = full key kept on a device, blue/figure = offline mode, amber/dots = pending, red/! = rotate recommended, grey/open = off.
-
----
+**Recovery.** Server address and password. If threshold mode is on there's a
+delay — a day by default — during which your other devices are told a recovery
+started and can approve or cancel it. With no devices left, the delay just
+passes.
 
 ## What's underneath
 
-**Transfer.** Both devices make throwaway keypairs. The QR carries a public key only. The two devices exchange a commitment and two random nonces (so a man-in-the-middle can't grind a matching code), both screens show the same emoji code, and only after the user confirms it on the key-holding device does the nsec travel — inside a NIP-59 gift wrap, encrypted so relays see nothing, over public relays or the local network. A substituted QR produces emoji that don't match. A phishing page pretending to be your login does *not* — it shows matching emoji — so the confirm button on the key-holding device says what the other side claims to be ("a browser at example.com"). That line is the defence; read it. Off-grid with no network at all, the app can show an encrypted-nsec QR (NIP-49) as a last resort.
+**Transfer.** Both devices make throwaway keypairs used for one pairing and then
+destroyed. The QR carries a public key and some relay addresses — never the
+secret — so photographing it gets you nothing. The two devices exchange a
+commitment and two random numbers, which is what stops an attacker in the middle
+from working out a matching code. The secret then travels wrapped so that relays
+see an anonymous blob addressed to a throwaway key: not the contents, not who
+sent it, not that the two parties are related. Relays are used because they
+already exist, nobody runs them for this purpose, and any of them can be swapped
+for another mid-transfer.
 
-**Storage ladder.** Platform keystore with biometric → passkey-derived key (browser) → non-extractable browser key → plain app storage. Probed silently, strongest available wins.
+**Storage.** A ladder, probed silently, strongest rung that works.
 
-**Server.** Holds two things: an encrypted backup of the full key (scrypt at 256 MiB per guess, with a second key kept in a separate secret store so a leaked database is useless on its own, and a password proof so the server can rate-limit guesses instead of handing out the ciphertext; if the whole server is compromised, the password is the only thing left — the setup screen says exactly that), and — only in threshold mode — one share of the split key.
+**Server (optional).** Holds an encrypted backup of the key, and in threshold
+mode one share. The backup is protected by a password of the user's choosing, and
+the setup screen says plainly that if the server is breached, that password is
+the only thing left.
 
-**Threshold signing (FROST).** 2-of-N over BIP-340 Schnorr. The server holds share 1; every extra server holds the *same* share 1, so redundant servers add availability without adding attack surface. Devices hold shares 2..N. Rotation is a refresh: one trusted device picks a random number and sends each member a delta; shares change, the key doesn't, and nothing is ever reassembled. Every old share is dead the moment the epoch ticks. Adding a device after activation is done jointly by an existing device and the server, each sending a blinded partial — no key is ever assembled.
+**Threshold signing.** FROST over the same signature scheme Nostr already uses,
+so signatures look ordinary to everyone else. Any two shareholders can sign.
+Adding or removing a device re-keys the others without the key ever being
+reassembled.
 
-**Why default to backup-only.** Offline posting is normal on Nostr. Threshold signing trades it for revocability, and it lets your server see what your other devices post. That's a threat-model choice the user makes, not one the app makes for them.
+## What this protects against, and what it doesn't
 
-**What threshold mode does and doesn't protect against.** It protects against a hostile website, a hacked or dishonest server, and a lost laptop. It does not protect against a rooted phone — that's the same "lost unlocked phone = lost key" that Nostr has always had, unless you turn on two-device approval.
+It protects against a relay or anyone watching one; a photographed or swapped QR;
+a lost or stolen device, if threshold mode is on; and a hostile or breached
+server, if threshold mode is on.
 
----
+It does not protect against these, and the specs say so rather than implying
+otherwise:
 
-## Files
+- **A website you hand your key to.** The code comparison proves you're talking
+  to the device you think you are; it cannot tell you that device is honest. A
+  site can behave correctly for everyone who reviews it and act only against one
+  chosen person, so reputation is the wrong instrument. The only structural
+  answer is not giving a website a usable key, which is what threshold mode is.
+- **Two shareholders who collude.** In threshold mode any two of them can
+  reconstruct the key by simply exchanging their pieces — there's no protocol
+  step to log or refuse. Enrolling no server at all, and letting your own devices
+  co-sign, is the only configuration where that has no second party.
+- **A compromised device you're already using.** Same as any wallet.
+- **Being wrong about the mathematics.** Every other failure has a fallback. This
+  one doesn't, and because a Nostr key *is* the identity, there's no rotation in
+  protocol to recover with. There is a social one — announce a new key from the
+  old one while you still control it — but you lose your followers, your history's
+  attribution and everyone who misses the announcement. Expensive rather than
+  impossible, and it is what people actually do.
 
-- `NOSTR_KEY_MANAGEMENT.md` — the normative spec: exact flows, message kinds, parameters, UX copy.
-- `OVERVIEW.md` — this document.
+**Ordering matters more than any of the above.** Splitting a key doesn't change
+it. If something already got a whole copy of your key, turning on threshold mode
+afterwards does nothing — they keep a working copy permanently. It reduces the
+attack surface going forward; it repairs nothing backwards. Protection has to be
+in place before the first time you hand anything over, which makes it one of the
+few security decisions that is genuinely worth making early rather than when it
+becomes interesting.
+
+## Where to read what
+
+- [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md) — the transfer mechanism.
+  Self-contained; start here.
+- [NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md) — storage, backup, threshold
+  signing, and the two payload profiles.
+- [SPEC_ISSUES.md](SPEC_ISSUES.md) — disagreements and suspected errors.

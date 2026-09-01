@@ -303,7 +303,7 @@ they say "send HELLO to the peer," and §11 says what that is on Nostr.
 | 13. Multiple responders | §3.8 | Move verbatim |
 | 14. Policy | §8 (part) | Receive-only default, `transfer_event` log |
 | 15. Security properties | §9 (part) | Move the transfer bullets, state them more prominently |
-| Appendix A | Appendix A | Move (still missing the table) |
+| Appendix A | Appendix B | References only — `EMOJI_TABLE` cut, see decision 5a |
 
 ## Doc B — `NOSTR_KEY_STORAGE.md`
 
@@ -511,16 +511,15 @@ entry is ready to apply.
    diagrams are rewritten rather than moved. That is the cost of the mechanism
    being genuinely separable instead of merely described as such.
 
-5a. **SAS encoding.** Resolved. Emoji are the primary comparison; digits are
-   widened to eight and shown alongside for screen-reader access and as the
-   fallback when bundled glyphs cannot render. Either may be compared alone —
-   24 and 26.6 bits respectively, both above the ~20-bit practical floor set by
-   user-retry behaviour rather than by the single guess. `EMOJI_TABLE` closed by
-   normative reference to Matrix's 64-entry Apache-2.0 set at a pinned commit,
-   rendered from a **bundled** OFL font (Noto Emoji, monochrome subset
-   recommended) rather than the platform's, which removes vendor divergence at
-   the source instead of mitigating it. Table and glyphs are frozen on ship;
-   a revision is a protocol version change.
+5a. **SAS encoding.** Resolved — digits only, five of them. The emoji were cut
+   once §9 made the code something the Sender must *carry* between devices rather
+   than confirm: a human no longer compares anything, so a second human-comparable
+   representation had no normative role. Removing them took `EMOJI_TABLE`, the
+   Matrix table reference, the bundled-font mandate, the minimum render size, the
+   glyph-freeze rule and two §15 bullets — about 115 lines and an appendix — for
+   no loss of any enforced property. Five digits chosen for what the length tells
+   the user (no credential anyone holds is five digits long) with the tenfold
+   entropy gain over four as a secondary benefit.
 
 5. **Payload size ceiling.** Resolved as tiers rather than a number — see P1.
    Recommended default 2048 B base64; 21 KiB and above documented as

@@ -36,7 +36,7 @@ The exchange is:
 1. One device generates a throwaway keypair and shows its public half as a QR.
 2. The other scans it and generates its own throwaway keypair.
 3. The two exchange a commitment and two random numbers, from which both derive
-   the same short code — four emoji, with five digits alongside.
+   the same five-digit code.
 4. A person compares that code on both screens. This is what defeats an attacker
    in the middle.
 5. Only after the person confirms does the secret travel, encrypted end to end.
@@ -174,6 +174,25 @@ reassembled whole so that dropping one chunk is detectable, and a session
 lifetime beyond ten minutes. It is recorded here so that the gap is not filled
 incompatibly by implementers who assume it was an oversight.
 
+**Companion messages are a separate question, and are permitted.** P2 forbids
+splitting *one* payload across messages. It does not forbid a profile defining an
+additional, semantically distinct message in the same session — a new device
+often needs something alongside the secret to be useful at all, a relay list
+being the obvious case. A profile MAY define such messages, subject to all of:
+
+- At most **three** per session, each individually within P1. This is a budget,
+  not a licence: every extra message widens the traffic pattern P2's second
+  argument is about, and a profile wanting more is describing a sync protocol
+  rather than a transfer.
+- Sent only **after** the payload has been accepted, and only to the burner whose
+  payload was accepted. A companion message arriving before or instead of a
+  payload MUST be discarded.
+- **Covered by the same release consent.** §9's prompt names what will be sent,
+  and that naming MUST include the companions. A user who approved sending a key
+  must not discover afterwards that a relay list or a device label went with it.
+- Not required for completion: a Receiver that never gets them MUST still hold a
+  usable payload, since delivery is best-effort (T9).
+
 *Common misreading:* the ceiling is a property of the transport, not of the QR,
 and exchanging addresses does not lift it. The QR only ever carried a public
 key.
@@ -231,6 +250,8 @@ A profile defines one kind of payload. It is identified by a string matching
    satisfying P7.
 7. Any additional message tags, which MUST NOT collide with the reserved names
    in §11.4.
+8. Any companion messages (P2): what each carries, and the wording by which §9's
+   release prompt names them.
 
 A profile MAY restrict which parties are permitted to act as Sender, and MAY
 disallow the offline fallback entirely. Implementations MUST ignore tags they do
@@ -265,112 +286,82 @@ contacting party:  sends { nonce_C }
 both:              verify SHA-256("qrst-commit-v1" || C.pub || nonce_C) == commit
                    code    = SHA-256("qrst-sas-v1" || len(p) || p
                                      || SND.pub || RCV.pub || nonce_S || nonce_R)
-                   emoji[i] = EMOJI_TABLE[code[i] & 0x3f]      for i in 0..3
-                   digits   = (code[4..9] as u40 BE) mod 100_000, zero-padded to 5
+                   digits  = (code[0..5] as u40 BE) mod 100_000, zero-padded to 5
 ```
-
-Neither party transmits the code. Each derives it from values it already holds,
-and it reaches the other device through a person reading a screen (§9).
-
-**Five digits**, chosen primarily for what the length tells the user.
-
-**No secret anyone holds is five digits long.** Bank and device PINs are four or
-six; one-time codes are six. People carry strong templates for those shapes — a
-four-position field reads as *PIN*, a six-position field reads as *the code from
-my messages* — and five matches neither. That mismatch registers the way a phone
-number with the wrong number of digits looks wrong before anyone has counted it.
-
-The value of this is that it works in the honest case, on every ordinary pairing,
-rather than only during an attack. Each legitimate transfer quietly teaches the
-correct model: *this is not a secret I already know; it is a number that appears
-on my other screen.* A user who has internalised that is the user who hesitates
-when some unrelated page asks for four digits or six. It is the naming rules of
-§9 reinforced by the shape of the field, and unlike a warning it costs the user
-no attention.
-
-The arithmetic is a secondary benefit and points the same way. Because the code
-is typed rather than confirmed (§9), length is not doing the work length usually
-does — a code that must be entered cannot be passed by someone who never read the
-other screen, at any length. What it must survive is one online attempt by an
-attacker whose value was fixed before the honest randomness was revealed. Five
-digits make that one in a hundred thousand rather than one in ten thousand: a
-tenfold improvement for one keystroke.
-
-Five bytes are consumed for the draw so that the modulo bias is negligible.
 
 `SND.pub` and `RCV.pub` are the 32-byte burner public keys in role order,
 regardless of flow. In Flow A the contacting party `C` is the Sender, so
 `nonce_C = nonce_S`; in Flow B it is the Receiver. `p` is the profile identifier
-from the QR (§11.2) as ASCII, preceded by its length as a single byte.
-`EMOJI_TABLE` is Appendix A. Both emoji and digits MUST be shown.
+from the QR (§11.2) as ASCII, preceded by its length as a single byte. Five
+bytes are drawn so that the modulo bias is negligible.
 
-**What the transcript binds, and what it deliberately does not.** The code
-commits to the protocol version (via the domain separator), the profile, both
-burners, the role each burner holds, and both nonces. Binding the profile means
-the two parties agree on *what kind of secret is moving* as part of what the
-person verifies, rather than leaving P4 to a check the Receiver performs alone
-after the fact.
+Neither party transmits the code. Each derives it from values it already holds,
+and it reaches the other device through a person reading a screen (§9).
 
-It does **not** bind the relay set or the chosen transport, and that is a
-decision rather than an omission. §11.3 permits the relay and local paths to be
-raced, permits falling back between them mid-session, and permits trying the
-next relay when one rejects a publish. A transcript committing to the transport
-would turn every one of those recoveries into a SAS mismatch — an availability
-feature becoming a security failure the user cannot distinguish from an attack.
-It would also buy nothing: the transport is untrusted by construction (T7), so
-an attacker who controls the path still cannot produce a matching code.
+### Why five digits
 
-**Both MUST be displayed, and they do different jobs.** The digits are what the
-Sender's user types (§9) — that entry is the enforcement, because a comparison
-nobody is obliged to perform is a comparison that will sometimes not happen. The
-emoji are the fast recognition aid alongside it: seeing that the other device
-*is* the fox and the hammer is quicker than reading digits, and a
-disagreement is more obvious. They also give a screen-reader user and a client
-that cannot render the bundled glyphs a working path.
+**Chiefly for what the length tells the user.** No secret anyone holds is five
+digits long: bank and device PINs are four or six, one-time codes are six.
+People carry strong templates for those shapes — a four-position field reads as
+*PIN*, a six-position field reads as *the code from my messages* — and five
+matches neither. The mismatch registers the way a phone number with the wrong
+number of digits looks wrong before anyone has counted it.
 
-The emoji carry 24 bits and the digits 16.6. The digits are the smaller number
-and the stronger control, because they are the one that cannot be skipped.
+That works in the honest case, on every ordinary pairing, rather than only during
+an attack. Each legitimate transfer teaches the correct model: *this is not a
+secret I already know; it is a number that appears on my other screen.* A user
+who has internalised that is the user who hesitates when some unrelated page asks
+for four digits or six. It reinforces the naming rules of §9, and unlike a
+warning it costs no attention.
 
-Emoji MUST be rendered from the glyph set bundled with the implementation, never
-from the platform's own emoji font — see Appendix A. Vendor emoji fonts differ,
-and device pairing is cross-vendor by nature: a phone and a laptop from
-different manufacturers is the normal case, not the edge case.
+**The arithmetic is secondary and points the same way.** Because the code is
+carried between devices rather than confirmed (§9), length is not doing the work
+length usually does — a code that must be transported cannot be passed by someone
+who never read the other screen, at any length. What it must survive is one
+online attempt by an attacker whose value was fixed before the honest randomness
+was revealed. Five digits make that one in a hundred thousand: a tenfold
+improvement over four for one keystroke.
 
-**Why the commit.** Without it, an attacker in the middle — showing the Sender a
-QR for a burner they control while talking to the real Receiver as another —
-learns the Sender's burner from the first message, fixes the Sender's code, and
-grinds their own values offline until the Receiver's code matches.
+### What the transcript binds, and what it deliberately does not
 
-The crucial point is that the attacker need only grind **what the user actually
-compares**, not the full code. Against the digits alone that is 2^16.6, and
-against the emoji alone 2^24 — seconds of work on ordinary hardware, completed
-while the user is still looking at the second screen. Widening the code does not
-fix this: any string short enough for a person to compare is short enough to
-grind offline. Without the commit the SAS is worthless at every width.
+The code commits to the protocol version (via the domain separator), the profile,
+both burners, the role each burner holds, and both nonces. Binding the profile
+means the two parties agree on *what kind of secret is moving* as part of what is
+verified, rather than leaving P4 to a check the Receiver performs alone after the
+fact.
 
-With the commit, each attacker-chosen value is fixed before the honest
-randomness it must match is revealed. The attacker gets one attempt per session
-— one in a hundred thousand against the digits — and every failure is a mismatch on a
-screen a person is already looking at. This is the ZRTP construction, also used
-by Matrix.
+It does **not** bind the relay set or the chosen transport, and that is a decision
+rather than an omission. §11.3 permits the relay and local paths to be raced,
+permits falling back between them mid-session, and permits trying the next relay
+when one rejects a publish. A transcript committing to the transport would turn
+every one of those recoveries into a mismatch — an availability feature becoming
+a security failure the user cannot distinguish from an attack. It would also buy
+nothing: the transport is untrusted by construction (T7), so an attacker who
+controls the path still cannot produce a matching code.
 
-**Entropy, and why this much.** Four emoji carry 24 bits; five digits carry 16.6.
-They are drawn from disjoint bytes of the same hash.
+### Why the commit
 
-The digits are shorter than the emoji and are nonetheless the control that
-matters, because §9 requires them to be *typed* rather than confirmed. A code
-that must be entered cannot be completed by someone who never looked at the other
-screen — the failure mode that defeats every confirm-they-match design, including
-Bluetooth numeric comparison, Matrix verification and this specification's own
-earlier drafts. Length is not what closes that hole; entry is.
+Without it, an attacker in the middle — showing the Sender a QR for a burner they
+control while talking to the real Receiver as another — learns the Sender's
+burner from the first message, fixes the Sender's code, and grinds their own
+values offline until the Receiver's code matches. Five digits is 2^16.6: seconds
+of work on ordinary hardware, finished while the user is still looking at the
+second screen.
 
-What the digits must then survive is one online attempt by an attacker whose
-value was fixed before the honest randomness was revealed (the commit, below).
-That is one in a hundred thousand per session.
+Widening the code does not fix this. Any string short enough for a person to
+carry between two devices is short enough to grind offline. **Without the commit
+the code is worthless at every length**, which is why the commit rather than the
+length is the load-bearing part of this section.
 
-The figure that deserves attention is not the single attempt but the attempt
-*repeated*. A rejected code reads as a mistype, so the user restarts the pairing,
-and each restart is a fresh session and a fresh attempt:
+With the commit, each attacker-chosen value is fixed before the honest randomness
+it must match is revealed. The attacker gets one attempt per session — one in a
+hundred thousand — and every failure is a mismatch on a screen a person is
+already looking at. This is the ZRTP construction, also used by Matrix.
+
+### The retry loop is the dominant term
+
+A rejected code reads as a mistype, so the user restarts the pairing, and each
+restart is a fresh session and a fresh attempt:
 
 | Sessions | Cumulative risk |
 |---|---|
@@ -378,16 +369,15 @@ and each restart is a fresh session and a fresh attempt:
 | 10 | 1 in 10 000 |
 | 100 | 1 in 1 000 |
 
-**The retry loop is therefore the dominant term, not the code length**, and it is
-the only place where an attacker accumulates chances. An implementation that lets
-a user restart indefinitely without comment gives back more than any plausible
-number of extra digits would buy.
+This, not the code length, is where an attacker accumulates chances. An
+implementation that lets a user restart indefinitely without comment gives back
+more than any plausible number of extra digits would buy.
 
-§9 requires that the retry loop be throttled: a failed session cannot be resumed,
-the Sender refuses to re-pair with a burner it has already failed against, and
-repeated failures within an hour are surfaced to the user as possible
-interference rather than as isolated glitches. This is the only place an attacker
-accumulates attempts, so it is the control that carries the most weight.
+§9 therefore throttles it: a failed session cannot be resumed, the Sender refuses
+to re-pair with a burner it has already failed against, and repeated failures
+within an hour are surfaced to the user as possible interference rather than as
+isolated glitches. It is the control in this specification that carries the most
+weight.
 
 **Cost.** One extra message on the contacting side. Both flows are four messages
 before the payload moves.
@@ -475,7 +465,7 @@ Sender                                      Receiver
                                            10. send REVEAL(nonce_R) → SND.pub
                                            11. derive SAS; DISPLAY own code —
                                                "Type this on your other device:
-                                                [emoji] [digits]"
+                                                [digits]"
 12. receive REVEAL; verify commit; derive
     SAS; show the consent prompt of §9
 13. user types the code shown on the
@@ -526,22 +516,50 @@ present a prompt that:
 3. Shows the SAS.
 4. Requires a deliberate action. The Sender MUST NOT release before it.
 
-**The Sender MUST type the digits the Receiver displays.** Confirming that two
-screens match is not enforceable: where only one candidate is offered, a person
-moving quickly taps the only thing on screen and the comparison never happens.
-Requiring entry converts that from a diligence the design hopes for into a step
-that cannot be completed without having read the other device. This is the
-distinction Bluetooth draws between numeric comparison and passkey entry, and it
-is why the latter is the stronger mode.
+**The Sender MUST obtain the Receiver's code from the Receiver's display and
+verify it locally.** Confirming that two screens match is not enforceable: where
+only one candidate is offered, a person moving quickly taps the only thing on
+screen and the comparison never happens. Requiring the code to be *carried* from
+one device to the other converts that from a diligence the design hopes for into
+a step that cannot be completed without having read the other device. This is
+the distinction Bluetooth draws between numeric comparison and passkey entry,
+and it is why the latter is the stronger mode.
+
+**Two conforming methods**, and an implementation MAY offer either or both:
+
+- **Entry.** The user reads the digits and types them.
+- **Capture.** The user points this device's camera at the Receiver's display and
+  the code is read optically. A Receiver SHOULD therefore render its code in a
+  machine-readable form alongside the human-readable one.
+
+They are equivalent, because the property being enforced is not typing but that
+the code crossed a channel the user had to physically aim. Capture exists so that
+this specification does not require a keypad: a signer with a camera and two
+buttons is a legitimate and desirable implementation, and mandating entry would
+exclude it for no security gain.
+
+Neither method defends against a user who aims at the wrong screen — reading a
+code off an attacker's display and typing it in matches just as capturing it
+would. What both defend against is not looking at all, which is the failure that
+actually occurs.
+
+**Confirmation alone does not conform.** A control that merely asks whether the
+codes match — a tap, a button press, a biometric prompt — MUST NOT be used in
+place of entry or capture. A biometric or platform credential proves *who is
+present*; it carries no information about whether that person compared anything.
+Where a profile requires such a check as well (§5), it is complementary to this
+step and never a substitute for it.
 
 - The Receiver displays the five digits of §6. The Sender presents an entry
   field and compares what is typed against the value it computed itself. A
   mismatch aborts.
-- **The entry field MUST make its length visible** — five discrete character
-  positions, not a bare text input. The length is what tells the user this is not
-  a credential they already hold (§6), and a field that does not show its length
-  cannot say so. For the same reason the field MUST accept exactly five digits
-  and MUST NOT silently accept more.
+- **Where entry is used, the field MUST make its length visible** — five discrete
+  character positions, not a bare text input. The length is what tells the user
+  this is not a credential they already hold (§6), and a field that does not show
+  its length cannot say so. For the same reason the field MUST accept exactly
+  five digits and MUST NOT silently accept more.
+- Where capture is used, the same attempt budget and failure handling apply: a
+  captured code that does not match counts as an attempt.
 - At most **five** attempts per session; on the fifth failure the Sender abandons
   the session and zeroizes its burner. Five rather than three because of the
   multiple-responder case below. Five attempts against five digits is a
@@ -558,8 +576,6 @@ is why the latter is the stronger mode.
 - The field MUST NOT be pre-filled, and MUST NOT be auto-completed from the
   clipboard. Where both parties run on one machine they may share a clipboard,
   and an autofill would restore exactly the failure this requirement removes.
-- The emoji are still displayed on both screens. They are the fast recognition
-  aid; the typed digits are the enforcement.
 
 **A failed session is dead, and restarting means scanning again.** Attempts
 within one session give an attacker nothing: their value was fixed when the
@@ -666,8 +682,22 @@ reading. Two tiers:
   spends the user's attention where it is not needed, which is what leaves none
   for the case above.
 
-Consent MUST NOT be remembered, defaulted, or suppressed for subsequent
-transfers in either tier.
+**Authorisation is scoped to one session and MUST NOT outlive it.** Consent, and
+any platform credential or biometric check a profile requires alongside it (§5),
+authorise exactly one transfer session. They MUST NOT be remembered, defaulted,
+cached, or carried into a subsequent session, and MUST NOT open a period during
+which further transfers proceed unchallenged.
+
+Binding this to the session rather than to a clock is deliberate: a timed window
+is something an attack can ride, and it asks the user to reason about a duration
+they were never shown. One unlock, one transfer, and the authorisation dies with
+the session it was given for — which the ten-minute lifetime already bounds.
+
+This does not defend against a user who is deceived *during* the session; they
+will unlock willingly, and the release prompt above is what stands there. What it
+removes is the class of attack that exploits residual state — a window left open
+by a legitimate transfer an hour earlier, or a compromised client waiting for an
+unlocked moment.
 
 **Acceptance confirmation, on the Receiver.** Before a payload is committed, the
 Receiver MUST require the user to select the SAS matching the Sender's screen
@@ -758,6 +788,33 @@ prompt of §9. A client MUST reject URIs with unknown `v`, missing `mode`, or
 missing `p`, and MUST abort before generating a burner if it does not implement
 the declared profile.
 
+**Role collision.** A client that has already committed to a role — the user
+chose to send, or to receive — MUST reject a URI whose `mode` implies that same
+role, and MUST say so rather than failing later. Two Senders or two Receivers
+cannot complete a session, and the failure is otherwise discovered several steps
+in. A client that has not yet committed adopts the complementary role from the
+`mode` it scanned, and has nothing to refuse.
+
+**Why `p` is required rather than optional.** It is hashed into the SAS (§6), and
+anything feeding that derivation must be unambiguously present: an optional field
+needs a canonical encoding for its absence, two implementations will choose
+differently, and the result is two devices computing different codes from
+identical sessions. That failure is silent and indistinguishable from an attack —
+matching inputs, mismatched screens, an abort nobody can diagnose. Requiring the
+field removes the whole class for a few characters of QR.
+
+It is also what lets the scanning party tell the truth. §9 and §11.2a require the
+prompt to name what will move, and the scanner knows only what the URI says; an
+absent profile forces an implementation to write "a secret" where it should
+write "your key". And it moves a profile mismatch to scan time, before any burner
+exists, rather than to the end of a ceremony the user has already completed —
+failing late at a security prompt teaches people that failures there are noise.
+
+With a single profile defined this is redundant today. It is required from the
+outset because a field that becomes mandatory later is a breaking change, and
+because a document built around an open extension point should not defer the one
+field that identifies the extension in use.
+
 Profiles MAY register additional `mode` values.
 
 ### 11.2a Presenting the code
@@ -847,10 +904,7 @@ later, and a three-second probe MUST NOT close out a ten-minute session.
 { "kind": 24406, "content": "", "tags": [["burner","<RCV.pub hex>"],["v","1"]] }
 
 // ABORT — either party → peer, this session is over (§9)
-{ "kind": 24408, "content": "", "tags": [["burner","<own burner hex>"],["v","1"]] }
-
-// PAIR — SPAKE2 pairing parameters (§12), bare ephemeral, not wrapped
-{ "kind": 24407, "content": "<encrypted params>", "tags": [["rdv","<hex>"],["v","1"]] }
+{ "kind": 24407, "content": "", "tags": [["burner","<own burner hex>"],["v","1"]] }
 ```
 
 All kinds are unregistered placeholders and will change; they should be
@@ -866,14 +920,28 @@ the receiver-side enforcement in §13.
 Reserved tag names: `burner`, `commit`, `nonce`, `v`. Profiles MAY add tags to
 any message; implementations MUST ignore tags they do not recognise.
 
-These are unsigned rumors. Each is sealed — kind 13, signed by the sender's
-burner, NIP-44 to the recipient burner — and gift-wrapped — kind 1059, random
-one-time key, `p` tag set to the recipient burner — exactly per NIP-59. `PAIR`
-(24407) is the exception and is a bare ephemeral event.
+These are unsigned rumors. **Every one of them** is sealed — kind 13, signed by
+the sender's burner, NIP-44 to the recipient burner — and gift-wrapped — kind
+1059, random one-time key, `p` tag set to the recipient burner — exactly per
+NIP-59. There are no exceptions: every message in this protocol is addressed to a
+burner and wrapped, which is what makes the attribution check below apply
+uniformly.
 
 The wrap MUST carry `["expiration","<real wall-clock now + 600>"]` per NIP-40,
 computed from the true current time and **not** from the wrap's
 NIP-59-randomised `created_at`, which may be up to two days in the past.
+
+**Clock slack.** Session-window tests (§13) compare a rumor's own timestamp
+against the session's ten-minute lifetime with a tolerance of
+**`SLACK = 120` seconds** at each end. Two honest devices routinely disagree by
+tens of seconds, and without tolerance those sessions fail for no reason. The
+tolerance costs nothing: a rumor two minutes outside the window still falls
+inside the session and still counts toward the multiple-responder test of §13,
+so backdating within `SLACK` buys an attacker nothing.
+
+`SLACK` is normative rather than an implementation choice. If one client accepts
+what another rejects, honest pairings fail between them, and that failure is
+indistinguishable from interference.
 
 **NIP-40 is advisory and MUST NOT be relied on for enforcement.** A relay may
 honour it, ignore it, or serve the event long after it has lapsed, and a hostile
@@ -883,8 +951,18 @@ discarded from the session entirely (§13), whatever the wrap claims and whateve
 the relay served. The `expiration` tag is a courtesy that lets well-behaved
 relays drop dead traffic; it is not a security control.
 
-**Attribution check (T5).** On every received rumor the recipient MUST verify
-that the `burner` tag equals the seal's signing key. A mismatch is discarded.
+**Attribution check (T5).** A sender's burner identity appears in three places,
+and all three MUST agree or the rumor is discarded:
+
+1. the rumor's own `pubkey` field, which MUST be set to the sending burner;
+2. the `burner` tag;
+3. the key that signed the seal.
+
+The redundancy is deliberate but it is redundancy, and a specification that
+constrains only some of the three invites implementations to disagree about the
+rest. The rumor's `pubkey` is included because NIP-59 rumors carry one whether or
+not this document uses it, and an unspecified field is one an implementation may
+populate — and another may read.
 
 ### 11.5 Relay subscription
 
@@ -897,8 +975,21 @@ The receiving side subscribes:
 Dedupe by event id. The `since` window is required because NIP-59 randomises
 `created_at` up to two days back.
 
-If a relay rejects a publish — allowlist, paid, unknown key — the client tries
-the next relay from the QR, then the local path.
+**Publishing is parallel, not serial.** A client publishes each message to every
+relay from the QR that it has an open socket to, rather than trying them in turn.
+There is no security reason to prefer serial delivery — each relay sees the same
+unlinkable wrap — and racing them removes a latency cost from a session with a
+ten-minute budget. If every relay rejects a publish (allowlist, paid, unknown
+key), the client falls back to the local path.
+
+**Clients MUST keep a session outbox.** Every message published during a session
+is retained until the session ends, and republished to each relay (a) when a
+socket to it opens, and (b) after a NIP-42 authentication with it succeeds. The
+motivating case is otherwise silent in this specification: a relay may accept a
+socket, receive a publish, and only then demand `AUTH`, leaving the event
+discarded on a relay the peer is subscribed to. Without replay the session
+stalls until timeout while both parties appear reachable. Recipients dedupe by
+event id, so replay is free.
 
 If a relay returns `auth-required`, the client authenticates with its **burner**
 under NIP-42. The wrap is addressed to that burner, which is exactly what
@@ -987,72 +1078,48 @@ statement that the request did not originate from a scan, and MUST NOT allow
 that consent to be remembered or defaulted. This does not remove the residual
 risk of §9; it declines to widen it silently.
 
-### 12.2 Pairing code
+### 12.2 Channels this specification does not define
 
-For two devices that share no clipboard — two camera-less machines side by side,
-or any case where the code must be read aloud — the showing party displays a
-short typeable code instead. Copying cannot serve here: the alternative is
-transcribing two hundred characters of URI by hand, with no checksum outside the
-burner key.
+A typed code cannot carry a public key. A burner key is 32 bytes, and no
+compression puts that into something a person will type, so a code-based pairing
+cannot *convey* a key the way a QR does — it must **bootstrap** one, using a
+low-entropy shared secret to establish a high-entropy channel. That requires a
+password-authenticated key exchange, which is a cryptographic primitive nothing
+else in this specification uses.
 
-```
-code       = <nameplate>-<word>-<word>
-nameplate  = random 3-digit decimal, generated per session
-words      = two words from the PGP word list (even list, then odd list) — 16 bits;
-             adequate only because SPAKE2 allows one guess and a failure burns the code
-rendezvous = SHA-256("qrst-rdv-v1" || nameplate || hour_bucket)
-             hour_bucket = floor(unix_ts / 3600); the answering side tries the
-             current and previous hour
-```
+Such a channel is legitimate and an implementation MAY build one. It is not
+specified here because it is a different protocol that hands off to this one
+rather than a variation of it, and because two properties of it cannot be settled
+within this document:
 
-1. Both sides derive the rendezvous point from the nameplate.
-2. The typing side sends its SPAKE2 message; the showing side answers with its
-   own. Both derive `K` and exchange the RFC 9382 confirmation MACs.
-3. Each sends its burner public key and the remaining QR parameters (§11.2),
-   encrypted under `K`.
-4. Flow A or Flow B proceeds from the point after the QR scan.
+- **It needs a rendezvous nobody conveys.** The QR carries relay hints, so the
+  two parties agree on where to meet because one of them said so. A typed code
+  has no room for a URL, and a device being provisioned has no relay list of its
+  own, so both sides must independently arrive at the same rendezvous. That means
+  a designated transport relay — named infrastructure, which §3 exists to avoid,
+  and which in practice limits such a channel to clients that already share a
+  configuration.
+- **It runs before this protocol's addressing exists.** Every message defined in
+  §11.4 is sealed and wrapped to a recipient burner. A bootstrapping exchange has
+  no recipient key yet, so it must be addressed to something anyone holding the
+  code can compute — a public rendezvous identifier — which is a different shape
+  with its own denial-of-service surface.
 
-**Input validation.** The typing device MUST autocomplete from the PGP word list
-and MUST NOT transmit until both words are valid entries in the correct
-even/odd position, so most typos are caught before any SPAKE2 message is sent.
+An implementation that builds one hands off at a defined point: once both parties
+hold the other's burner public key and the parameters of §11.2, Flow A or Flow B
+proceeds unchanged from immediately after the scan, and every requirement of §6
+and §9 applies as written.
 
-**Failure handling.**
-
-- No peer message within 60 s: no guess consumed, the client MAY retry under the
-  same code.
-- A peer message received but key confirmation fails: the code is burned. Both
-  sides abort, zeroize `K`, and the showing device immediately displays a fresh
-  code. The client MUST NOT run SPAKE2 again under a burned code.
-
-A code is valid for one session and at most ten minutes.
-
-**Rendezvous collisions.** The nameplate space is a thousand values per hourly
-bucket, shared across every user of every client. Honest concurrent users
-therefore collide and burn each other's codes, at a rate that rises with the
-square of adoption. Clients SHOULD use a dedicated rendezvous relay where
-available, and SHOULD prefer §12.1 whenever a shared clipboard exists, which
-keeps this path to the cases that genuinely need it. Collisions are a nuisance,
-not a compromise.
-
-**Denial of service.** The nameplate space is small by design, because it must be
-typeable. An attacker who posts a bogus SPAKE2 message to every rendezvous burns
-every code on first contact. This is accepted: the effect is a nuisance, and the
-user falls back to §12.1 or to §10. Clients SHOULD show "Pairing codes are being
-interfered with — try copying the link instead" after two consecutive burns.
-
-**Implementation cost, stated plainly.** This section is the most expensive in
-the specification to implement — SPAKE2, HKDF, confirmation MACs, both halves of
-the PGP word list, and a rendezvous scheme — in service of a case that §12.1
-covers wherever a clipboard spans the two devices. It is OPTIONAL. A client that
-implements §12.1 and not §12.2 is conforming, and SHOULD say which pairing
-methods it supports rather than presenting a code entry field it cannot honour.
+Interoperability is the trade. QR and paste interoperate across clients because
+this document specifies them; a bootstrapped channel is a per-client feature, and
+two clients implementing different ones will not pair.
 
 ## 13. Multiple responders
 
 A QR or code is meant to be scanned once. If, within one session, the receiving
 side sees messages from **two or more distinct burner public keys** — two HELLOs
-in Flow A, two REQUESTs in Flow B, two SPAKE2 responders in §12.2 — someone other
-than the user probably scanned it.
+in Flow A, two REQUESTs in Flow B — someone other than the user probably scanned
+it.
 
 The client shows a soft, non-blocking notice on the device that displayed the
 QR:
@@ -1067,9 +1134,9 @@ event (§14) with the multiple-responder flag set.
 To keep bugs from firing it, the following MUST NOT count as a second
 responder: the same message delivered by more than one route; retransmissions
 from the same burner; a message that fails to decrypt; and messages whose
-sender-set timestamp falls outside the session's ten-minute window. Where the
-transport applies its own timestamp for unlinkability, that timestamp MUST NOT
-be used for this test — see §11.4.
+sender-set timestamp falls outside the session's ten-minute window, widened at
+each end by the `SLACK` of §11.4. Where the transport applies its own timestamp
+for unlinkability, that timestamp MUST NOT be used for this test — see §11.4.
 
 Out-of-window rumors are **discarded from the session entirely** — never shown,
 never given a nonce exchange, never in the SAS list — not merely excluded from
@@ -1083,6 +1150,12 @@ while still reaching the user.
 - A party that received a secret by transfer defaults to **receive-only**. The
   toggle is one action, unguarded, and the transfer screen shows it inline
   ("This device is receive-only — allow sending?") rather than hiding it.
+- **Enabling sending MUST expire.** It authorises the transfer at hand, or a
+  bounded period the user is shown, and then reverts. It MUST NOT be a permanent
+  setting. The toggle stays unguarded — §0 forbids putting a barrier in front of
+  a user completing a legitimate transfer — but an unguarded action that grants a
+  permanent capability is a permanent capability granted without thought, which
+  is a different thing from a low-friction one.
 - Every transfer MUST write a local record: timestamp, profile, transport, SAS,
   peer burner, and the multiple-responder flag.
 - This mechanism has no remote revocation. A device list, if shown, MUST label
@@ -1140,24 +1213,6 @@ while still reaching the user.
   and none of the operators is party to the transfer. This is the property that makes the
   approach practical rather than merely possible, and it is deployment
   advice, not a conformance requirement.
-- **Platform emoji fonts diverge, and this mechanism's normal case is
-  cross-vendor.** Pairing is phone-to-laptop, one operating system to another,
-  which is the worst case for glyph divergence: two honest devices rendering the
-  same code from their own platform fonts can display visibly different
-  pictures. Appendix A removes this by requiring a bundled font. The residual
-  risk is an implementation that ignores that requirement, or one whose bundled
-  font fails to load — which is why the digits are always displayed and are
-  always sufficient on their own.
-- **The table and the bundled glyphs are frozen once implementations ship.**
-  Changing an entry does not fail loudly: both sides compute the same code and
-  display different pictures, so users correctly abort legitimate transfers, and
-  the failure is indistinguishable from an attack. Implementations MUST NOT
-  substitute glyphs to work around a rendering problem, and a revision of the
-  glyph set is a protocol version change, not an asset update.
-- The digits are the enforced check because §9 requires them to be typed; the
-  emoji are a recognition aid shown alongside. An implementation that displays
-  only the emoji has removed the enforcement and reduced the mechanism to a
-  confirm-they-match design, which is what §9 exists to avoid.
 - A compromised device yields whatever that device holds. Nothing here changes
   that.
 
@@ -1191,13 +1246,12 @@ explicable parameters, which is why it was chosen for Bitcoin over the NIST
 curves and their unexplained seed constants. NIP-44 v2 uses ChaCha20 with
 HMAC-SHA256. These are among the most examined constructions in use.
 
-One exception, stated plainly: **SPAKE2 (§12.2) requires two fixed curve points
-that come from a trusted setup**, and their provenance cannot be fully accounted
-for in the way the rest of the stack's constants can. This is the single place
-where the "what if the constants are wrong" question has a real object to attach
-to. §12.2 is OPTIONAL, and §12.1 covers most of what it exists for, so an
-implementation uneasy about it can simply not ship it. A future revision may
-replace it with CPace, which needs no such setup.
+**No part of this specification depends on a trusted setup.** Every constant in
+use has an account of where it came from. This was not true of earlier drafts,
+which specified a password-authenticated key exchange requiring two fixed curve
+points of unexplained provenance; that channel is no longer defined here (§12.2),
+and with it went the only ingredient to which the question "what if the constants
+are wrong" had a concrete object to attach.
 
 **What this specification does not claim.** That the primitives are unbroken —
 only that they are the best-examined available and that the design fails in
@@ -1241,15 +1295,16 @@ make the guarantee depend on hardware some parties cannot have.
 ### Magic Wormhole
 
 The nearest relative in intent: move a secret between two machines with no
-accounts, authenticated by a short human-carried code — essentially §12.2. It
-depends on a mailbox server for rendezvous, and in practice on one canonical
-instance, so it has an operator and a single point of failure.
+accounts, authenticated by a short human-carried code. It depends on a mailbox
+server for rendezvous, and in practice on one canonical instance, so it has an
+operator and a single point of failure — which is precisely the dependency that
+kept a code-based channel out of §12.
 
 ### Signal and WhatsApp device linking, Matrix device verification
 
 All three pair devices through infrastructure the vendor operates and the user
-holds an account with. Matrix additionally supplies the emoji table and the SAS
-construction used here.
+holds an account with. Matrix is also the source, by way of ZRTP, of the
+commit-then-reveal construction in §6.
 
 ### What is actually different
 
@@ -1262,71 +1317,10 @@ can substitute at any moment.
 That is the claim worth defending, and it is a claim about the substrate rather
 than about the cryptography. The cryptography is borrowed on purpose.
 
-## Appendix A — EMOJI_TABLE
+## Appendix A — References
 
-`EMOJI_TABLE` is the 64-entry Matrix SAS emoji set, indexed 0–63 by the
-`number` field:
-
-> `data-definitions/sas-emoji.json` in `matrix-org/matrix-spec`, Apache
-> License 2.0.
-> https://github.com/matrix-org/matrix-spec/blob/main/data-definitions/sas-emoji.json
-
-Implementations MUST pin a specific commit of that file rather than tracking its
-default branch.
-
-### Rendering
-
-Implementations MUST render these glyphs from a **bundled font**, not from the
-host platform's emoji font. The RECOMMENDED font is Noto Emoji, licensed
-SIL OFL 1.1, which permits bundling and redistribution within other software;
-implementations MUST pin a version.
-
-This is what makes the comparison sound. Vendor emoji fonts disagree — the same
-codepoint is a visibly different picture on iOS, Android and Windows — and
-device pairing is cross-vendor by nature, so two honest devices rendering from
-their own platforms can display the same code as different pictures. Bundling
-removes the divergence rather than mitigating it.
-
-Implementations SHOULD bundle a **subset** containing only the 64 glyphs, which
-is small enough for web clients, and SHOULD prefer the **monochrome** set: it is
-smaller, contains no pairs distinguishable by colour alone, and remains legible
-to colourblind users. Glyphs MUST be rendered at a size where the 64 remain
-mutually distinguishable; implementations MUST NOT render them below 24 CSS
-pixels or the platform equivalent.
-
-A client that cannot render the bundled glyphs MUST fall back to comparing the
-digits alone, which §6 permits, rather than falling back to platform emoji.
-
-**This is a normative reference, not a copy.** The table is not reproduced here
-deliberately: sixty-four emoji pasted into a text document are liable to be
-altered by editors, encoding conversions and variation-selector normalisation,
-and a single altered codepoint is an interoperability break that stays invisible
-until two independent implementations meet a user. Referencing the upstream file
-by pinned commit makes the asset byte-identical across implementations by
-construction.
-
-**Why this set rather than a purpose-drawn one.** Sixty-four icons that stay
-mutually distinguishable at small sizes, carry no unintended meaning in any
-locale, and have names in every language an implementation ships is a
-substantial design project, and it is one already done: this set is exactly 64
-entries — exactly the 6-bit index needed — screened for confusability and
-cultural safety, named in more than twenty-five languages, and already used by
-the construction §6 derives from, so implementers of both protocols share one
-asset.
-
-Drawing a bespoke set would also make the freeze problem worse: a purpose-drawn
-glyph that turns out to be confusable can never be corrected, for the reason in
-§15.
-
-Matrix is separately deprecating its *emoji verification method* in favour of
-decimal, which is the reasoning §6 follows in making the digits normative.
-Deprecating the method does not withdraw the data file, and the Apache 2.0 grant
-is irrevocable.
-
-## Appendix B — References
-
-NIP-11, NIP-40, NIP-42, NIP-44, NIP-49, NIP-59. RFC 9382 (SPAKE2). BIP-340.
-PGP word list. ZRTP (RFC 6189) for the commit-then-reveal SAS construction.
+NIP-11, NIP-40, NIP-42, NIP-44, NIP-49, NIP-59. BIP-340. ZRTP (RFC 6189) for the
+commit-then-reveal construction of §6.
 
 ## Status
 
@@ -1334,8 +1328,5 @@ Version 1.0-draft. Two things are missing: the event kinds of §11.4 are
 unregistered placeholders and will change, and there are no test vectors for any
 derivation — the SAS of §6, and one at the declared payload maximum as P1
 requires.
-
-Appendix A is closed: the emoji table is a normative reference to Matrix's
-64-entry set at a pinned commit.
 
 Review is more useful than implementation at this stage.

@@ -278,8 +278,8 @@ A profile defines one kind of payload. It is identified by a string matching
    satisfying P7.
 7. Any additional message tags, which MUST NOT collide with the reserved names
    in §11.4.
-8. Any companion messages (P2): what each carries, and the wording by which §9's
-   release prompt names them.
+8. Any companion messages (P2): what each carries, the value of its `companion`
+   tag (§11.4), and the wording by which §9's release prompt names them.
 
 A profile MAY restrict which parties are permitted to act as Sender, and MAY
 disallow the offline fallback entirely. Implementations MUST ignore tags they do
@@ -553,7 +553,11 @@ present a prompt that:
    dishonest party must lie in a way the user can read. Origins containing
    non-ASCII MUST be shown as punycode, so homoglyph domains read as what they
    are.
-3. Shows the SAS.
+3. Presents the means of obtaining the Receiver's code — the entry field or the
+   capture control described below. The Sender MUST NOT display the code it
+   derived itself. A prompt that shows the expected value beside the field for
+   it reduces entry to copying from one screen, which is precisely the failure
+   the requirement below exists to remove.
 4. Requires a deliberate action. The Sender MUST NOT release before it.
 
 **The Sender MUST obtain the Receiver's code from the Receiver's display and
@@ -997,6 +1001,9 @@ later, and a three-second probe MUST NOT close out a ten-minute session.
 
 // ABORT — either party → peer, this session is over (§9)
 { "kind": 24407, "content": "", "tags": [["burner","<own burner hex>"],["v","1"]] }
+
+// COMPANION — Sender → Receiver, emitted alongside the payload (§4)
+{ "kind": 24408, "content": "<profile-defined>", "tags": [["burner","<SND.pub hex>"],["companion","<profile-defined name>"],["v","1"]] }
 ```
 
 All kinds are unregistered placeholders and will change; they should be
@@ -1009,8 +1016,18 @@ and any reasoning about retention must be done about kind 1059, which is a
 regular event. What bounds retention is the expiration tag below, together with
 the receiver-side enforcement in §13.
 
-Reserved tag names: `burner`, `commit`, `nonce`, `v`. Profiles MAY add tags to
-any message; implementations MUST ignore tags they do not recognise.
+Reserved tag names: `burner`, `commit`, `nonce`, `companion`, `v`. Profiles MAY
+add tags to any message; implementations MUST ignore tags they do not recognise.
+
+**Companions share one kind.** Every companion message a profile defines (§4)
+uses kind 24408 and is distinguished by its `companion` tag, whose values the
+profile assigns (§5, item 8). The kind is fixed rather than allocated per
+profile because the session's profile is already fixed by the QR (§11.2), so the
+tag is unambiguous in the only scope where it is ever read, and profiles defined
+outside this document need no kind registry to avoid colliding with each other.
+A Receiver MUST ignore a companion whose name it does not recognise and MUST NOT
+treat it as an error. The three-per-session cap of §4 counts every kind-24408
+rumor in the session, recognised or not.
 
 These are unsigned rumors. **Every one of them** is sealed — kind 13, signed by
 the sender's burner, NIP-44 to the recipient burner — and gift-wrapped — kind
@@ -1433,8 +1450,8 @@ commit-then-reveal construction of §6.
 ## Status
 
 Version 1.0-draft. Two things are missing: the event kinds of §11.4 are
-unregistered placeholders and will change, and there are no test vectors for any
-derivation — the SAS of §6, and one at the declared payload maximum as P1
-requires.
+unregistered placeholders and will change, and the test vectors are incomplete —
+the SAS of §6 is covered in `vectors/`, but the one at the declared payload
+maximum that P1 requires is not.
 
 Implementation has begun. Review is more useful than deployment at this stage.

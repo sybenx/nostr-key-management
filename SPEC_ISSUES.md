@@ -56,7 +56,7 @@ Every entry needs a section number and a proposed fix. Both are what make an
 entry actionable rather than a note that something felt off.
 
 Issues concerning the two gaps already named in [README.md](README.md) — the
-placeholder event kinds and the absence of test vectors — do not need to be
+placeholder event kinds and the incomplete test vectors — do not need to be
 filed here. They are known and tracked.
 
 ---

@@ -1,14 +1,12 @@
 # Nostr Key Transfer & Storage — Specification
 
-Version 8.0-rc1
+Version 9.0-draft
 Applies to: any client that holds a user's nsec (web, desktop, mobile)
 
-> Transfer is specified in [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md). What
-> used to occupy §§3–6 and §8 of this document has moved there; §3 is what
-> remains — a pointer, the two payload profiles, and transfer policy.
-> Sections are contiguous. Anything citing the pre-split numbering — §§4–6 or §8
-> for transfer, or §§5–11 for security, scope and the server — predates the
-> split.
+> Transfer is specified in [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md) (QRST).
+> Changes from 8.0-rc1 are listed in `CHANGES-9.0.md`; the load-bearing ones are
+> the index architecture of §7.4, the two-tier revocation of §7.9, and the
+> passkey-default backup of §4.2.
 
 Key words MUST, MUST NOT, SHOULD, MAY are normative.
 
@@ -16,40 +14,59 @@ Key words MUST, MUST NOT, SHOULD, MAY are normative.
 
 ## 0. Design principle
 
-The base experience is: **the nsec lives on the user's devices, and gets to a new device by the transfer mechanism of [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md).** That works on any device with a network connection and nothing else.
+The base experience is: **the nsec lives on the user's devices, and gets to a new
+device by the transfer mechanism of QRST.** That works on any device with a
+network connection and nothing else.
 
-Everything in this document — at-rest encryption, platform sync, backup, threshold signing — is an addition on top of that base. An addition MUST degrade to the base when its prerequisites are absent. Nothing here may prevent a user from logging in, transferring, or using their key on a device that lacks a feature.
+Everything in this document — at-rest encryption, platform sync, backup,
+threshold signing — is an addition on top of that base. An addition MUST degrade
+to the base when its prerequisites are absent, with one declared exception:
+threshold signing (§7) requires a reachable co-signer by construction, and §7.3
+states that trade on the screen where the user accepts it.
 
 ## 1. Overview
 
-An identity is an nsec. This document defines how a client stores it, how it is backed up, and how it may optionally be split so that no single party holds a usable copy.
+An identity is an nsec. This document defines how a client stores it, how it is
+backed up, and how it may optionally be split so that no single party holds a
+usable copy.
 
-How it reaches a new device is specified separately, in [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md); §3 registers the two payload profiles this document uses with it. The nsec is never displayed except in that specification's offline fallback and when the user explicitly exports or views it (§2.2, privileged).
+How it reaches a new device is specified in QRST; §3 registers the two payload
+profiles this document uses. The nsec is never displayed except in QRST's offline
+fallback and when the user explicitly exports or views it (§2.2, privileged).
 
-Where the platform already syncs secrets between the user's own devices, the client uses that first and skips the handshake.
+Where the platform already syncs secrets between the user's own devices, the
+client uses that first and skips the handshake.
 
 ---
 
 ## 2. Storage
 
 ### 2.1 At rest
-The client stores the nsec using the strongest mechanism the device supports, probing top to bottom. Every level is acceptable; the lowest is the base.
+
+The client stores the nsec using the strongest mechanism the device supports,
+probing top to bottom. Every level is acceptable; the lowest is the base.
 
 | Level | Platform | Mechanism |
 |---|---|---|
-| 3 | iOS / macOS | Keychain item under `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` with **no** biometric ACL (so reads are silent while the device is unlocked); privileged actions call `LAContext.evaluatePolicy` separately |
+| 3 | iOS / macOS | Keychain item under `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` with **no** biometric ACL (reads are silent while unlocked); privileged actions call `LAContext.evaluatePolicy` separately |
 | 3 | Android | Keystore AES key **without** `setUserAuthenticationRequired` (silent while unlocked, StrongBox where available); privileged actions use `BiometricPrompt` separately |
-| 2 | Windows / Linux desktop | Credential Locker / Secret Service, bound to the OS user account, silent read; privileged actions use `UserConsentVerifier` / a keyring prompt. Not hardware-bound; not level 3. Probed first on Windows; DPAPI file is the fallback if Locker is unavailable. |
+| 2 | Windows / Linux desktop | Credential Locker / Secret Service, bound to the OS user account, silent read; privileged actions use `UserConsentVerifier` / a keyring prompt. Not hardware-bound. Probed first on Windows; DPAPI file is the fallback if Locker is unavailable. |
 | 2 | Windows | DPAPI-protected file (never prompts; privileged actions proceed with an in-app confirm only) |
-| 2 | Browser | nsec wrapped by a non-extractable WebCrypto AES-GCM key in IndexedDB (silent use) — one storage path; when a platform authenticator exists, a user-verifying WebAuthn assertion additionally gates privileged actions as a consent step (§2.3). Never level 3: the browser has no authenticator-bound decryption. |
+| 2 | Browser | nsec wrapped by a non-extractable WebCrypto AES-GCM key in IndexedDB (silent use); a user-verifying WebAuthn assertion additionally gates privileged actions (§2.3). Never level 3: the browser has no authenticator-bound decryption. |
 | 1 | Any | App-private storage, unencrypted |
 
-Probing MUST be silent and MUST NOT add onboarding steps. If a level-3 mechanism requires user enrollment (e.g. no biometric set up, no passkey), the client stores at the next available level and MAY show a one-time, dismissible notice offering to upgrade later. The client MUST re-probe on launch and upgrade in place when a higher level becomes available.
+Probing MUST be silent and MUST NOT add onboarding steps. If a level-3 mechanism
+requires user enrollment, the client stores at the next available level and MAY
+show a one-time, dismissible notice offering to upgrade later. The client MUST
+re-probe on launch and upgrade in place when a higher level becomes available.
 
-On desktop browsers, if a NIP-07 extension is present, the client SHOULD offer to hand the key to the extension. The offer is dismissible.
+On desktop browsers, if a NIP-07 extension is present, the client SHOULD offer to
+hand the key to the extension. The offer is dismissible.
 
 ### 2.2 Unlock policy
-The unlock threshold is a per-identity setting, `lock`, chosen by the user and carried to new devices on the payload message (§3.1):
+
+The unlock threshold is a per-identity setting, `lock`, chosen by the user and
+carried to new devices on the payload message (§3.1):
 
 | `lock` | Behaviour |
 |---|---|
@@ -57,70 +74,124 @@ The unlock threshold is a per-identity setting, `lock`, chosen by the user and c
 | `launch` | One prompt when the app starts; none until it exits. |
 | `idle:<seconds>` | Prompt after that many seconds without interaction. |
 
-In browsers, `launch` and `idle` prompts are consent steps, not cryptographic locks — `W` decrypts silently for any code on the origin (§2.3); the same is already true of the privileged-action gate.
+In browsers, `launch` and `idle` prompts are consent steps, not cryptographic
+locks — `W` decrypts silently for any code on the origin (§2.3).
 
-Ordinary signing never prompts under `device`. On every platform, including the browser, "device" means the device: one unlock covers every tab, window, and process of the client on that device. Level-3 storage is therefore configured so reads never prompt; the authenticator is invoked only by the privileged-action gate below. The enrollment key `E` (§7.1) is stored the same way, since it must sign co-signing rounds silently.
+Ordinary signing never prompts under `device`. On every platform, "device" means
+the device: one unlock covers every tab, window, and process of the client. The
+enrollment key `E` (§7.1) is stored the same way, since it must authenticate
+co-signing rounds silently.
 
-**Privileged actions always prompt**, under every `lock` value, using the platform authenticator (biometric/OS credential; PRF assertion in the browser). Levels 1–2 substitute the OS credential prompt where one exists and otherwise proceed.
+**Privileged actions always prompt**, under every `lock` value, using the platform
+authenticator. Levels 1–2 substitute the OS credential prompt where one exists and
+otherwise proceed.
 
-*Rule:* an action is privileged if and only if it touches the key itself — who holds it, where a copy goes, or what protects it. Actions about content are never privileged.
+*Rule:* an action is privileged if and only if it touches the key itself — who
+holds it, where a copy goes, or what protects it. Actions about content are never
+privileged.
 
 Privileged:
 - Sending the key or a share to another device: acting as Sender (QRST §7 step 13, QRST §8 step 13, and §7.7 below).
 - Showing or exporting the key: export (§4.1, always `ncryptsec`), viewing the nsec on screen (permitted, privileged, never written to disk), enrolling a server (§7.2 uploads a backup).
-- Splitting or refreshing it: enabling threshold signing, refresh, Offline mode on or off (and allowing it for another device), keep-key on or off, disabling threshold signing.
-- Cutting a device off: remove device, change role.
-- Changing `lock`.
+- Splitting or rotating it: enabling threshold signing, rotation, Offline mode on or off (and allowing it for another device), keep-key on or off, disabling threshold signing.
+- Cutting a device off: revoking a device's `E`, removing a device, changing role.
+- Changing `lock`, or changing the backup password or passkey.
 
-Never privileged: posting, replying, reacting, reading or sending DMs, decrypting, completing a signing round for another of the user's devices, receiving a key as Receiver, and any signature a website requests.
+Never privileged: posting, replying, reacting, reading or sending DMs,
+decrypting, receiving a key as Receiver, and any signature a website requests.
 
-The prompt MUST state what it guards in one line ("Confirm — this sends your key to *Laptop*"). A prompt the user cannot attribute to an action they just took is a defect.
+The prompt MUST state what it guards in one line ("Confirm — this sends your key
+to *Laptop*"). A prompt the user cannot attribute to an action they just took is a
+defect.
 
-### 2.3 Browser procedure
+### 2.3 Browser and passkey procedure
+
 ```
 Storage:
   W  = crypto.subtle.generateKey(AES-GCM-256, extractable = false, [encrypt, decrypt]); persist W in IndexedDB
   call navigator.storage.persist() at first use; IndexedDB is evictable without it
   ct = AES-256-GCM(W, nsec)                        // usable by any tab on this origin without a prompt
 
-Privileged-action gate (level 2+ browsers):
-  Registration: navigator.credentials.create({ ..., authenticatorSelection: { userVerification: "required" } })
-                if no platform authenticator is available → plain level 2; privileged actions use an in-app confirm only
-                store credentialId, SALT_A, SALT_B (random 32 B each)
-  Gate:         navigator.credentials.get({ ..., extensions: { prf: { eval: { first: SALT_A, second: SALT_B } } } })
-                a successful assertion (signature verified against the stored credential public key) is the consent;
-                the nsec is then read from `W` as usual. `userVerification: "required"` is what makes the assertion
-                a biometric/PIN event. PRF is not used in v1.
+Passkey registration (all platforms, not only browsers):
+  navigator.credentials.create({
+    authenticatorSelection: {
+      authenticatorAttachment: "platform",         // REQUIRED — see below
+      residentKey: "required",
+      userVerification: "required"
+    },
+    extensions: { prf: { eval: { first: SALT_A, second: SALT_B } } }
+  })
+  store credentialId, SALT_A, SALT_B (random 32 B each)
+
+  SALT_A → privileged-action gate (§2.2)
+  SALT_B → backup key derivation (§4.2)
+
+Obtaining a PRF value:
+  PRF-on-create is recent (Firefox 148+, Chrome 147+). Where the create call does not
+  return prf.results, the client MUST immediately perform a get() with the same eval
+  salts to obtain them. Both shapes MUST be handled.
+
+Privileged-action gate:
+  navigator.credentials.get({ ..., extensions: { prf: { eval: { first: SALT_A } } } })
+  a verified assertion is the consent; the nsec is then read from `W` as usual.
 ```
-`SALT_B` is reserved and MUST NOT be used in v1.
 
-The PRF gate is a **consent step, not a cryptographic boundary**: `W` decrypts the nsec silently, so a hostile script on the origin is not stopped by the passkey. The gate stops a person at an unlocked machine, which is its purpose; the origin itself is trusted by definition, and §7's restricted role exists because of exactly this.
+**`authenticatorAttachment: "platform"` is required, not cosmetic.** Without it the
+credential may land on a roaming security key or a device-bound authenticator,
+both of which are useless for §4.2 recovery — recovery is the case where the
+device is gone. On desktop Chrome, only passkeys saved to Google Password Manager
+return a PRF value at all.
 
-`W` is origin-scoped by the browser: only this site's own code can use it. Other sites, other origins, and extensions without host permission for this origin cannot reach it. Under `lock = device` there is no expiry; a browser a user has logged into stays logged in until they remove the device or change `lock`.
+**Fail closed on status.** The client MUST NOT record a passkey backup as
+established until a PRF value has actually been returned by a real assertion and
+the resulting wrap has been accepted by the server. Reporting a backup that does
+not exist is worse than reporting none, because the error surfaces only when
+recovery is already the last option.
+
+The PRF gate is a **consent step, not a cryptographic boundary** for storage: `W`
+decrypts the nsec silently, so a hostile script on the origin is not stopped by
+the passkey. Its use in §4.2 is different and is a real boundary there, because
+the PRF value is origin-bound by the platform and cannot be produced by another
+origin's dialog.
+
+`W` is origin-scoped by the browser. Under `lock = device` there is no expiry.
 
 ### 2.4 Platform sync
-The client MUST enable platform sync of the encrypted nsec where the platform provides it and the user has that platform feature turned on:
+
+The client MUST enable platform sync of the encrypted nsec where the platform
+provides it and the user has that feature on:
 
 | Platform | Mechanism |
 |---|---|
 | iOS / macOS | Second Keychain item with `kSecAttrSynchronizable = true`, `kSecAttrAccessibleWhenUnlocked` (iCloud Keychain) |
-| Android | Block Store (`BlockstoreClient`) with cloud backup enabled; the platform encrypts end-to-end under the lockscreen credential without the app seeing it. Keystore keys do not sync. |
+| Android | Block Store (`BlockstoreClient`) with cloud backup enabled. Keystore keys do not sync. |
 | Browser | None; a browser is re-enrolled by transfer (QRST) |
 | Desktop native | None |
 
-On first launch the client MUST check for a synced copy before showing onboarding. If present, it restores silently and onboarding is skipped, and the device **self-enrolls**: it generates `E`, signs an updated device list adding its own `E.pub` (label = platform + model, role = trusted, since it restored from the user's own platform account), and publishes it. Before self-enrolling, the restored device fetches the epoch record (the plaintext `epoch` tag suffices). If the fetch fails (offline, relays unreachable), it MUST wait and retry — self-enrolling on stale information is the dangerous branch; the key stays dormant until the record's presence or absence is established. **Absence is only established** after querying a relay the user controls or pays for (when configured) or, otherwise, after a 24-hour retry window — a withholding relay can manufacture absence, and absence is what unlocks self-enrollment with a full key. If an **active threshold record exists**, a restored nsec is a stale full-device backup taken before activation: the device **quarantines** the ciphertext (retained encrypted, unusable, invisible to the UI), writes the threshold marker, and shows the Receiver QR; the quarantined copy is deleted only once a co-signer completes a round for this device or the record is re-confirmed after 7 days — so a relay serving a stale *active* record (or withholding a `disabled` one) cannot trick the device into destroying the only key. Only when no active record exists does it self-enroll with the key. A restored device that does self-enroll therefore always appears on the list and is wiped at activation like any other. If instead it finds the §7.5 threshold marker, it holds no key: it shows the Receiver QR (QRST) so an existing member can issue it a share.
+On first launch the client MUST check for a synced copy before showing onboarding.
+If present it restores silently, onboarding is skipped, and the device
+**self-enrolls**: it generates `E`, signs an updated device list adding its own
+`E.pub`, and publishes it.
+
+Before self-enrolling, the restored device fetches the epoch record (the plaintext
+`epoch` tag suffices). If the fetch fails it MUST wait and retry — self-enrolling
+on stale information is the dangerous branch. **Absence is only established** after
+querying a relay the user controls or pays for, or otherwise after a 24-hour retry
+window; a withholding relay can manufacture absence, and absence is what unlocks
+self-enrollment with a full key.
+
+If an **active threshold record exists**, a restored nsec is a stale full-device
+backup taken before activation: the device **quarantines** the ciphertext
+(retained encrypted, unusable, invisible to the UI), writes the threshold marker,
+and shows the Receiver QR. The quarantined copy is deleted only once a co-signer
+completes a round for this device or the record is re-confirmed after 7 days.
 
 ---
 
 ## 3. Transfer
 
-Transfer is specified in **[QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md)**
-(QRST) and is not restated here. Devices pair by QR or by copying the URI, the
-sending device's user types a five-digit code shown on the receiving device, and
-the payload travels gift-wrapped over public relays.
-
-This section defines what QRST leaves to its consumers: the two payload profiles
-this document uses, and the transfer policy that applies to both.
+Transfer is specified in QRST and is not restated here. This section defines the
+two payload profiles and the transfer policy.
 
 ### 3.1 Profile `nostr-nsec`
 
@@ -129,403 +200,728 @@ Registered against QRST §5. Moves a whole identity key.
 | QRST requirement | This profile |
 |---|---|
 | Payload encoding | 64 lowercase hex characters: the 32-byte private scalar. **Not bech32.** |
-| P1 tier | Tier 1. A 32-byte payload is ~1.9 KB on the wire and clears every relay limit. |
+| Max size | Default (2048 B). A 32-byte payload is ~1.9 KB on the wire. |
 | P4 check | 64 hex characters, decoding to a scalar in range for secp256k1 and yielding a valid x-only public key. |
-| P5 rendering | Derive the npub, resolve a display name if one is cached, and ask **"Log in as @name?"** |
+| P5 rendering | Derive the npub, resolve a display name if cached, ask **"Log in as @name?"** |
 | §5 prompt wording | "Send your key to *X*." The prompt MUST state that this is the identity itself and cannot be undone: there is no rotation in Nostr, and a party that receives this key keeps a working copy permanently. |
-| Offline fallback (§6) | Permitted, with restrictions below. |
+| Offline fallback | Permitted, with restrictions below. |
 | Additional tags | `lock`, `enroll` — below. |
 | Companion messages | One: the user's relay list. |
 
-**`lock` tag**, on the payload message: `["lock", "<device|launch|idle:N>"]`. It
-carries the sending user's unlock threshold (§2.2) so the preference travels with
-the key rather than resetting on each new device.
+**`lock` tag**, on the payload message: `["lock", "<device|launch|idle:N>"]`.
 
 **`enroll` tag**, on the request and acknowledgement messages:
 `["enroll", "<E.pub hex>", "<label proposal>"]`. `E` is the receiving device's
-stable enrollment keypair (§7.1) — distinct from the QRST burner, which is
-destroyed when the session ends. The sending device reads `E.pub` and adds it to
-the device list; the label is a default its user may override.
+stable enrollment keypair (§7.1), distinct from the QRST burner. The sending
+device reads `E.pub` and adds it to the device list.
 
-Enrollment happens *during* the transfer deliberately. Every §7 operation —
-share issuance, refresh deltas, offline requests, audit digests, removal — must
-reach a device long after the session is over, and needs a stable address to do
-it. The transfer is the one moment when a channel already authenticated by the
-SAS and a user already paying attention are both available. Enrolling afterwards
-would require a second ceremony with neither.
+Enrollment happens during the transfer because every §7 operation must reach a
+device long after the session is over and needs a stable address. The transfer is
+the one moment when a channel authenticated by the SAS and a user paying attention
+are both available.
 
 **Offline fallback.** The passphrase-encrypted encoding required by QRST P7 is
-NIP-49 `ncryptsec` with `log_n = 18`, KSB `0x02`. The sending device MUST show
-the line **"Anyone who photographs this code can try passwords against it
-forever; this passphrase is the only protection."**
+NIP-49 `ncryptsec` with `log_n = 18`, KSB `0x02`. The sending device MUST show the
+line **"Anyone who photographs this code can try passwords against it forever;
+this passphrase is the only protection."**
 
-**Sender restrictions** (QRST §5 permits a profile to impose these). In threshold
-mode the offline fallback is unavailable toward restricted targets and available
-only from a keep-key device — the only device that legitimately holds a whole
-nsec. An Offline-mode device's two shares are the polynomial and MUST NOT be
-exported; handing an origin a whole nsec off-grid would bypass every §7
-invariant at once.
+**Sender restrictions.** In threshold mode the offline fallback is available only
+from a keep-key device — the only device that legitimately holds a whole nsec. An
+Offline-mode device holds both indices and MUST NOT export.
 
 ### 3.2 Transfer policy
 
-- Any device holding the nsec MAY act as Sender, at any storage level, subject to
-  the restrictions in §3.1.
+- Any device holding the nsec MAY act as Sender, subject to §3.1.
 - A device that received its key by transfer defaults to **receive-only**. The
-  toggle is one tap, unguarded, and the transfer screen shows it inline ("This
-  device is receive-only — allow sending?") rather than hiding the option.
-  Per QRST §14 it expires rather than persisting.
+  toggle is one tap, unguarded, shown inline. Per QRST §14 it expires.
 - Every transfer writes a local record
-  `transfer_event { ts, profile, transport, sas, peer_burner, multi }` visible in
-  settings. (QRST §14 requires this; the field formerly called `rung` is now
-  `profile` plus `transport`.)
+  `transfer_event { ts, profile, transport, sas, peer_burner, multi }`.
 - There is no remote revocation in base mode. A "devices" list, if shown, MUST
   label removal as deleting the local copy only.
 
----
-
 ### 3.3 Profile `frost-share`
 
-Registered against QRST §5. Issues one threshold share to a device joining an
-already-activated identity (§7.7).
+Registered against QRST §5. Gives a joining device the device share (§7.7).
 
 | QRST requirement | This profile |
 |---|---|
-| Payload encoding | A `KEY_SHARE_PART` value per §7.7. |
-| P1 tier | Tier 1. |
-| P4 check | `share·G == group_pub + commitment·index` for the receiving index. |
-| P5 rendering | The identity the share belongs to, and that this device will hold **one share, not the key** — it will be unable to sign alone. |
-| §5 prompt wording | "Give *X* a share of your key." This is materially less severe than `nostr-nsec` and the prompt SHOULD say so: a share alone signs nothing, and the device can be revoked later. |
+| Payload encoding | The 32-byte share-2 scalar, 64 lowercase hex characters, plus `group_pub`, `commitment`, `epoch`, `group_secret`. |
+| Max size | Default (2048 B). |
+| P4 check | `share·G == group_pub + commitment·2`. |
+| P5 rendering | The identity the share belongs to, and that this device will hold **one share, not the key** — it cannot sign alone and cannot sign at all until the user admits it at a server (§7.7). |
+| §5 prompt wording | "Give *X* a share of your key." Materially less severe than `nostr-nsec`: a share alone signs nothing, and the device can be revoked. |
 | Offline fallback | **Not permitted.** |
 | Additional tags | `enroll`, as above. |
 | Companion messages | None. |
 
-> **Open: this profile does not fit QRST's model cleanly.** §7.7 has the joining
-> device receive *two* partials — one from a trusted device, one from the server —
-> which it sums. QRST describes one Sender, one Receiver, one payload, and its
-> attribution check (QRST §11.4) would reject a second partial arriving from a
-> party that is not the Sender.
->
-> The likely resolution is that the trusted device is the QRST Sender and the
-> server's partial is delivered outside the QRST session, addressed to the same
-> burner — but that needs specifying, and QRST's attribution rule needs an
-> explicit carve-out or the burner needs to accept a named second writer. Do not
-> implement `frost-share` until this is settled.
->
-> This profile is deliberately the last subsection of §3. It exists only to serve
-> threshold signing (§7), so if that is ever dropped or split out, both go and
-> nothing renumbers.
+> **Resolved in 9.0.** In 8.0 this profile did not fit QRST's model: §7.7 had the
+> joining device receive two partials from two parties, which QRST's one-Sender
+> attribution check rejects. Under §7.4's index architecture every device holds the
+> same share, so issuance is a copy from one Sender — one Sender, one Receiver, one
+> payload. No carve-out to QRST is required.
+
+---
 
 ## 4. Backup
 
-### 4.1 Onboarding prompt
-At the end of onboarding the client presents backup as the next step, with one of:
-- Platform sync (§2.4), auto-detected and shown as already done if active,
-- ncryptsec export (file or printable QR, `log_n = 18`),
-- Blob-store backup (§4.2).
+### 4.1 When backup is offered
 
-The step is skippable ("Later"). If skipped, the client MUST NOT nag: no banner, no scheduled reminders. Backup status is shown as a passive line in settings ("Backup: none / iCloud Keychain / server"). The client MAY show the offer once more, dismissibly, immediately after the user completes a transfer as Sender. The client MUST NOT block login, posting, or transfer on backup status.
+At the end of onboarding the client presents backup as the next step, with:
+
+- Platform sync (§2.4), auto-detected and shown as already done if active,
+- Blob-store backup (§4.2) — the default offer where a passkey is available,
+- `ncryptsec` export (file or printable QR, `log_n = 18`).
+
+The step is skippable ("Later"). If skipped, the client MUST NOT nag: no banner,
+no scheduled reminders. Backup status is a passive line in settings.
+
+**The client MUST offer backup again at activation (§7.5), before the local nsec
+is wiped.** This is not a nag: the user has just chosen to split their key, is
+reading a screen about it, and is one step from having no full copy on any device.
+It is the same moment §3.1 relies on for enrollment — an authenticated context and
+an attentive user — and it is the last one at which the nsec exists locally.
 
 The export is always `ncryptsec`; the client MUST NOT export a raw nsec.
 
 ### 4.2 Blob store
-A stateless HTTP service (reference: Cloudflare Worker + KV) that stores one encrypted backup per identity. Used directly by §4.1 and reused unchanged by §7.2/§7.10.
+
+A stateless HTTP service (reference: Cloudflare Worker + KV) that stores one
+encrypted backup per identity. Used by §4.1 and reused by §7.2 / §7.10.
+
+`CK` is wrapped independently under each enrolled recovery factor. **A passkey
+factor is set up by default wherever a platform authenticator returns a PRF value;
+a passphrase factor is always available and MUST NOT be omitted.** Either wrap
+recovers the same `CK`.
 
 ```
-Client (setup, on a trusted device):
-  salt     = random 16 B
-  K_pw     = scrypt(password, salt, N = 2^log_n, r = 8, p = 1, dkLen = 64)    log_n = 18, fixed for the blob store (a 17 option would make its bearer enumerable via §4.2 anti-enumeration); local-only §4.1 and QRST §10 exports MAY use 17 on low-memory devices. Recovery needs ~512 MiB free; the client says so if the device lacks it
-  K_enc    = K_pw[0..32]                                     // never leaves the device
-  K_auth   = HKDF-SHA256(K_pw[32..64], salt = "auth-v1", info = server base url)   // per-server: a removed server's credential is useless elsewhere
-  K_srv    = random 32 B                                     // generated client-side, held by server
-  K_wrap   = HKDF-SHA256(ikm = K_enc XOR K_srv, salt = "blob-wrap-v1", info = npub_hex)
-  CK       = random 32 B                                     // content key, generated once per identity
-  nsec_ct  = nonce || AES-256-GCM(CK, nonce, nsec)            // fixed for the identity's lifetime
-  ck_wrap  = nonce || AES-256-GCM(K_wrap, nonce, CK)          // per server / per password
-  blob     = { nsec_ct, ck_wrap }                            // nonces random 96 bits; the §4.1 file export is separately ncryptsec
-  PUT  /v1/backup   { npub, salt, blob, k_srv, K_auth }   auth: Schnorr sig over a server challenge by the user's key
-                    (base mode), or by a trusted E.pub on the current device list (threshold mode — the server holds the
-                    group secret and can read the list; group-key digest signing is unavailable by design, §7.6)
-                    server computes verifier = HMAC-SHA256(key = k_srv, K_auth) and discards K_auth
+Content, once per identity:
+  CK          = random 32 B
+  nsec_ct     = nonce || AES-256-GCM(CK, nonce, nsec)          // fixed for the identity's lifetime
+  K_srv       = random 32 B, generated client-side, held by the server
 
-Client (recovery, on a trusted device, nothing else available):
-  GET  /v1/salt?npub=…                        → { salt, log_n }   for unknown npubs returns HMAC(server_secret, npub) truncated to 16 B as salt and always log_n = 18 (matching the overwhelming real-user value; a mixed fake distribution would itself signal non-existence)
-  derive K_pw from password + salt
-  POST /v1/recover { npub, K_auth }           → { blob, k_srv } only if HMAC-SHA256(k_srv, K_auth) == verifier
-  K_wrap as above → decrypt
+Passphrase factor:
+  salt_pw     = random 16 B
+  K_pw        = scrypt(password, salt_pw, N = 2^18, r = 8, p = 1, dkLen = 64)
+  K_auth_pw   = HKDF-SHA256(K_pw[32..64], salt = "auth-v1",      info = server base url)
+  K_wrap_pw   = HKDF-SHA256(ikm = K_pw[0..32] XOR K_srv, salt = "blob-wrap-v1", info = npub_hex)
+  ck_wrap_pw  = nonce || AES-256-GCM(K_wrap_pw, nonce, CK)
 
-Server:
-  keys by SHA-256(npub); stores salt, blob, verifier in the data store
-  stores k_srv in a separate secret store (e.g. Worker secret binding / per-user KV in a second namespace), never in the same table as blob
-  /recover: constant-time compare; 10 attempts per hour and 30 per day per npub, 20 per hour per IP, exponential backoff
-            unknown npubs get the same response time and shape as a wrong password
-            an attacker who knows the URL and npub can exhaust the per-npub quota and delay a user's recovery by hours; this DoS is accepted
-            30 online guesses a day, with no password floor, is enough to find a top-few-hundred password in weeks without any breach; the password screen says so
-  no request logging beyond rate-limit counters
+Passkey factor (default where available):
+  prf         = PRF(credential, SALT_B)                          // 32 B, origin-bound by the platform
+  K_auth_prf  = HKDF-SHA256(prf, salt = "prf-auth-v1",  info = server base url)
+  K_wrap_prf  = HKDF-SHA256(ikm = HKDF(prf, "prf-enc-v1", npub_hex) XOR K_srv,
+                            salt = "blob-wrap-v1", info = npub_hex)
+  ck_wrap_prf = nonce || AES-256-GCM(K_wrap_prf, nonce, CK)
+
+  blob = { nsec_ct, ck_wrap_pw, ck_wrap_prf? }
+
+PUT  /v1/backup { npub, salt_pw, blob, k_srv, K_auth_pw, K_auth_prf? }
+     auth: Schnorr sig over a server challenge by the user's key (base mode) or by a
+     trusted E.pub on the current device list (threshold mode)
+     server computes verifier_pw = HMAC-SHA256(k_srv, K_auth_pw), and verifier_prf likewise,
+     then discards both K_auth values
+
+GET  /v1/salt?npub=…   → { salt_pw, log_n, factors: ["pw"] | ["pw","prf"] }
+     for unknown npubs returns HMAC(server_secret, npub) truncated to 16 B, always log_n = 18,
+     always factors ["pw","prf"] — a factor list that varied would signal non-existence
+
+POST /v1/recover { npub, K_auth }  → { blob, k_srv }
+     the server compares K_auth constant-time against verifier_prf, then verifier_pw;
+     the client does not declare which factor it used
 ```
-Why the indirection: changing the password or adding a server only re-wraps `CK` under a new `K_wrap`. In threshold mode `CK` is distributed to trusted devices alongside their shares (§7.5), so those operations never reconstruct the nsec. A trusted device holding `CK` plus the server's `nsec_ct` is the key — which is already true of trusted device + server per §5, so nothing is lost.
 
-Properties, honestly stated:
-- A leak of the data store alone (salt, blob, verifier) is unbreakable: `verifier` is keyed by `k_srv`, so it cannot be used to test password guesses offline, and `blob` needs `k_srv` regardless. (A plain hash verifier would have let a data-store leak be cracked offline and then redeemed with a single correct online call.)
-- A leak of both stores reduces to password strength at scrypt cost. No single-server construction avoids this; OPAQUE does not either, since the server's OPRF key would be in the same leak.
-- An attacker with only a URL and npub gets rate-limited online guesses, never the ciphertext.
+**Release policy depends on which verifier matched, and this is the point of
+having two.**
+
+- **`verifier_prf` matched** → release immediately. The PRF value is origin-bound
+  by the platform, so no other origin can produce it; there is no phishing path to
+  delay against.
+- **`verifier_pw` matched** → the server **MUST** hold release for a configurable
+  delay (default 24 h) whenever it knows at least one `E.pub`, notifying every
+  registered device by `RECOVERY_NOTICE` (kind 24316): "A recovery of your key
+  started; it completes at …; approve or cancel from any trusted device." A
+  trusted device can approve instantly or cancel. With no registered `E.pub` the
+  delay elapses on its own.
+
+The password branch is the phishable one (§7.13), so the friction sits there and
+nowhere else. In 8.0 the delay was a blanket SHOULD; it is now a MUST on the
+branch that needs it.
+
+**Server storage.** Keys by `SHA-256(npub)`; stores `salt_pw`, `blob`, and the
+verifiers in the data store, and `k_srv` in a separate secret store, never in the
+same table as `blob`. `/recover`: constant-time compare; 10 attempts per hour and
+30 per day per npub, 20 per hour per IP, exponential backoff; unknown npubs get the
+same response time and shape as a wrong secret; no request logging beyond
+rate-limit counters.
+
+Properties:
+
+- A leak of the data store alone is unbreakable: the verifiers are keyed by
+  `k_srv`, so they cannot test guesses offline, and `blob` needs `k_srv` regardless.
+- A leak of both stores reduces to the strength of the weakest enrolled factor. For
+  a passkey factor that is 32 bytes of platform-held entropy; for a passphrase it is
+  password strength at scrypt cost.
 - The password is never sent; only `K_auth` is, over TLS to the enrolled URL.
+- **A phished passphrase no longer yields the key on its own where a passkey factor
+  is enrolled** — but it does yield it after the delay if the user approves the
+  notice. The delay makes theft visible and cancellable; it does not make it
+  impossible.
 
-**Recovery delay (SHOULD; default on whenever the server knows at least one `E.pub` to notify — backup-only users are equally phishable, so enrollment registers the enrolling device's `E.pub`, and later devices register on first contact; this leaks device count to the server, which threshold servers already see).** Notices are `RECOVERY_NOTICE` wraps (kind 24316) to each registered `E.pub`. On a correct `/recover`, the server holds release for a configurable delay (default 24 h), immediately notifying every enrolled member ("A recovery of your key started; it completes at …; approve or cancel from any trusted device"). A trusted device can approve instantly or cancel; with no devices left, the delay simply elapses. This converts a phished password from an instant key into a raced, visible one.
-
-Because there is no password floor (§7.2), the password screen MUST show the two warning lines in §7.2 step 2.
+**Password screen.** Where a passphrase factor is being set up, the client MUST
+pre-fill a generated six-word phrase (~96 bits) and the screen MUST carry: **"If
+this server is ever hacked, this is the only thing protecting your key,"** and
+**"Anyone who knows your npub and this server can try a few dozen guesses a day."**
+In threshold mode the generated phrase MUST NOT be replaceable with free text: a
+phrase the user has only ever seen inside this client is one a phishing dialog
+cannot ask for convincingly, and a user-chosen password is one they will type
+elsewhere and learn to type on request.
 
 ---
 
 ## 5. Security properties
 
-**Transfer properties are stated in QRST §15 and are not repeated here.** The one
-that matters most to this document: a hostile party acting as Receiver is not
-stopped by the code comparison — only by a user declining the release prompt —
-and §7's restricted role is what bounds the damage once threshold mode is on.
+Transfer properties are in QRST §15. The one that matters most here: a hostile
+party acting as Receiver is not stopped by the code comparison, only by a user
+declining the release prompt.
 
 Base:
+
 - The blob store never sees plaintext key material.
-- A hostile enrolled website can phish the backup password with a fake dialog; the recovery delay makes the resulting theft visible and cancellable, but a user who confirms a phished recovery loses the key. Residual risk.
-- Storage theft yields ciphertext bound to the device's secure hardware (level 3), to the OS user account or browser profile (level 2), or plaintext (level 1, by the user's choice).
-- Blob store: a dumped database is unbreakable without `K_enc`; a URL and npub buy rate-limited guesses; a fully compromised server reduces to password strength at scrypt cost.
-- A compromised unlocked device yields the key. Without §7, Nostr has no rotation; this is out of scope.
+- Storage theft yields ciphertext bound to the device's secure hardware (level 3),
+  to the OS user account or browser profile (level 2), or plaintext (level 1).
+- A compromised unlocked device yields the key. Without §7, Nostr has no rotation.
 
 Threshold mode (§7):
-- **At `t = 2`, any two shareholders reconstruct the key.** Server and site, server and trusted device, or trusted device and site each suffice. Collusion is not a protocol event — shareholders may simply exchange share values — so no audit, rate limit, allowlist or approval in §7 constrains it. The guarantee of this mode is that no *single* party holds a usable key; it is not a guarantee against two parties agreeing. A user who enrolls no server (§7.6 makes trusted devices the normal co-signers in that case) has no second party to collude with, and that is the only in-design answer to this.
-- Once every device has ACKed, no device, site, or server holds a usable key *alone*: each holds one share; replicas of the same index never combine; the backup holds the key under the password. Until every device has ACKed, the non-ACKed devices still hold the full key and are shown as such.
-- A hostile site is limited per §7.13. A compromised server is limited per §7.12.
-- Refresh (§7.9) invalidates every old share without reconstructing; only §7.15 disable reconstructs, on a trusted device, at the user's request.
-- Keep-key (§7.5) and Offline mode (§7.14) are explicit exceptions the user creates with a second device's approval; they are shown in the lock state. Both are trusted-device-only, because a device that has held two shares cannot be un-trusted by refresh.
-- Permanent `#p = E.pub` subscriptions let a relay count a user's devices and see per-device activity timing under a stable key. Not mitigated in v1.
-- The server (or any trusted co-signer) sees the plaintext of every event a share-only device signs through it, and the peer pubkey of every NIP-04/44 conversation key it helps derive. It does not see DM contents.
-- A compromised trusted device can start a refresh war; the resolution is recovery from backup on a clean device (§7.10).
-- **A compromised trusted device plus a reachable server is the key.** It can enroll a Receiver it controls (§7.7) or run disable (§7.15), and share + share reconstructs. Threshold mode therefore protects against hostile sites, hostile or compromised servers, and lost *restricted* devices; it does not protect against a rooted trusted device, which is the same threat as a rooted phone in base mode. Users with two or more trusted devices MAY turn on **two-device approval** (§7.1), after which issuance, disable, keep-key, and reconstructing operations require a tap on a second trusted device and a single compromised trusted device is limited to co-signing.
+
+- **No two devices can sign, reconstruct, or conspire.** Every device holds a
+  replica of index 2 (§7.4), and replicas of one index never combine. Any number of
+  devices is one share. The only valid signing pair is server + device.
+- **The device share grants no authority alone.** It is inert without a co-signer.
+  What grants access is `E` (§7.1), which the co-signer authenticates on every
+  round. This is why §7.6's allowlist, rate limits and audit thresholds are
+  enforceable rather than advisory — a device cannot route around the server by
+  asking another device, because no other device can answer.
+- **Server compromise plus any one device share is the key.** Share 1 alone signs
+  nothing, but a dumped share 1 combined with a share 2 taken from any device
+  reconstructs. Remedy is §7.12.
+- Revocation is two-tier and each tier fixes a different thing: revoking `E` (§7.9)
+  stops a device signing immediately; rotation makes its retained share useless
+  against the new share 1; Re-split (§7.11) is required only when share 1 itself may
+  have leaked.
+- Revocation is forward-only. A hostile device that read DM history before removal
+  is not undone by removing it.
+- A phished backup passphrase is the residual risk. §4.2's passkey factor removes
+  the sole-factor path where a platform authenticator exists; the delay and notices
+  bound the rest. A user who approves a phished recovery loses the key.
+- Keep-key (§7.5a) and Offline mode (§7.14) are explicit exceptions the user creates
+  with a second device's approval, shown in the lock state.
+- Permanent `#p = E.pub` subscriptions let a relay count devices and see per-device
+  timing under a stable key. Not mitigated.
+- The server sees the plaintext of every event a device signs through it, and the
+  peer pubkey of every conversation key it helps derive. It does not see DM contents.
+- **No reachable co-signer means no signing.** This is a real availability cost,
+  declared in §0 and stated on §7.3's screen. Self-hosting a server (§7.2) and
+  Offline mode (§7.14) are the answers; both require the user to act in advance.
 
 ---
 
 ## 6. Out of scope for v1
-NIP-46 remote signing, own-npub monitoring, identity migration tooling. These do not change any decision above; a later version may add them.
 
-**On rotation, since §5 says there is none.** There is no rotation *in protocol*:
-the key cannot be changed and old copies cannot be invalidated. There is a social
-one — announce a new key from the old one while you still control it, and ask
-people to follow the new identity. It is expensive rather than impossible: the
-follower graph, the history's attribution and every existing reference are lost,
-and anyone who misses the announcement keeps trusting the old key. That is what
-people actually do after a key is exposed, and it is the reason threshold mode
-reduces attack surface going forward rather than repairing anything backwards.
+NIP-46 remote signing, own-npub monitoring, identity migration tooling.
 
-## 7. Server: backup and optional threshold signing
+**On rotation of the identity itself.** There is none in protocol: the nsec cannot
+be changed and old copies cannot be invalidated. There is a social one — announce a
+new key from the old one while you still control it — which costs the follower
+graph, the history's attribution and every existing reference. Threshold mode
+reduces attack surface going forward; it repairs nothing backwards.
 
-Additive per §0. Nothing in this section alters §1–10. A user who never enrolls a server is unaffected.
+---
 
-**Server independence.** Every operation in this section — signing, share issuance, refresh, Offline mode, disabling — MUST be completable with two of the user's own devices and no server reachable. A server is a replica of share 1 that happens to be always on; it is never a requirement.
+## 7. Server: mandatory co-signer and threshold signing
+
+Threshold signing is opt-in per §7.3. A user who never enables it is unaffected by
+this section. Once enabled, a co-signer is required by construction.
 
 ### 7.1 Enrollment keys and device list
-Every device generates a stable secp256k1 **enrollment keypair** `E` at install (stored per §2.1). The client maintains a **device list** — `{E.pub, label, role, storage_level, mode}` per device — in a parameterised replaceable event (kind 30242, `d = "devices"`), signed by the user's key. In base mode it is NIP-44-encrypted to the user's own pubkey. In threshold mode a share-only device cannot compute `nsec·P` without a round, so the content is instead encrypted (NIP-44 v2 payload format with a symmetric conversation key) under a **group secret**: a random 32-byte value distributed alongside every share in `KEY_SHARE` and `KEY_SHARE_PART` and replaced by a fresh one carried in every `KEY_REFRESH`. The epoch record (§7.4) is encrypted the same way. During every transfer the Sender reads the Receiver's `E.pub` from the `enroll` tag of `KEY_REQUEST` or `TRANSFER_ACK` and adds it to the list; the label proposal is a default the Sender's user may override. Each device subscribes to `#p = E.pub` permanently for §7 wraps, with `since` = a persisted last-seen cursor minus 2 days, and never less than 32 days back on first subscribe or after a gap — QRST §11.5's 2-day window is for burners only. This costs the user nothing and is required for §7.4 onward.
 
-**Roles.** `trusted` — native app on a device the user owns; may sign, refresh, issue shares, act as helper, approve requests, remove devices. `restricted` — every browser-origin device; may sign ordinary content and send requests, nothing else: never Sender, never helper, never refresh initiator. **A Receiver's role is chosen by the Sender's user, never by the Receiver.** `plat`/`origin` are unverified, so they inform the prompt but never the role. The Sender's consent prompt (QRST §9) carries an unchecked box, **"Trust this device — it's my own app on hardware I own,"** defaulting to restricted for everything. Ticking it assigns trusted. When two-device approval (below) is on, ticking it additionally requires an `APPROVAL` from a second trusted device. Role can later be changed only from a trusted device. A phishing page that claims `plat=linux` therefore still lands on index 2 unless the user affirmatively ticks the box. Servers enforce role on every privileged endpoint; devices enforce it on every privileged wrap.
+Every device generates a stable secp256k1 **enrollment keypair** `E` at install
+(stored per §2.1). `E` is the per-device secret: it is what a co-signer
+authenticates, and revoking it is revocation (§7.9). No two devices share an `E`.
 
-**Two-device approval (optional).** A setting on the devices screen, available when two or more trusted devices are enrolled, off by default. When on, every operation that issues a new index, releases share 1, or reconstructs (§7.7, §7.14 enter, §7.15, and the reconstructing operations in §7.5a) requires an `APPROVAL` (kind 24311) signed by a second trusted `E.pub` naming the operation, the requester, a unique request-id, and a 10-minute expiry — verifiers reject reuse and expiry, so an APPROVAL cannot be replayed within the 30-day wrap window; servers and helper devices MUST verify it before contributing. The prompt on the approving device names the operation and consequence in one line. The toggle itself says: "With exactly two trusted devices, losing one means recovering from backup." Without this setting, one trusted device plus a server suffices, and §5 states what that means.
+The client maintains a **device list** — `{E.pub, label, role, storage_level, mode,
+admitted}` per device — in a replaceable event (kind 30242, `d = "devices"`). In
+base mode it is NIP-44-encrypted to the user's own pubkey. In threshold mode it is
+encrypted under a **group secret**: a random 32-byte value distributed alongside
+every share and replaced on every rotation.
 
-**Labels** are written by the Sender at enrollment (defaulting to platform + model, or origin for browsers) and edited only from trusted devices. A Receiver MUST NOT be able to set or change its own label.
+During every transfer the Sender reads the Receiver's `E.pub` from the `enroll` tag
+and adds it to the list. Each device subscribes to `#p = E.pub` permanently for §7
+wraps, with `since` = a persisted last-seen cursor minus 2 days, never less than 32
+days back on first subscribe or after a gap.
+
+**Roles.** `trusted` — native app on hardware the user owns; may act as Sender or
+issuer, initiate rotation, approve requests, revoke and admit devices, hold Offline
+mode. `restricted` — every browser-origin device; may sign ordinary content and
+request rounds, nothing else. **A Receiver's role is chosen by the Sender's user,
+never by the Receiver.** The Sender's consent prompt carries an unchecked box,
+**"Trust this device — it's my own app on hardware I own,"** defaulting to
+restricted. `origin` is unverified and informs the prompt, never the role.
+
+**Admission.** A device that has received a share is `admitted: false` until a
+trusted device or the server console admits it. **An unadmitted device holds an
+inert share: co-signers MUST refuse every round for an `E.pub` that is not admitted
+in the current epoch.** Enrollment gives the shard; admission gives access.
+
+**Two-device approval (optional).** Available with two or more trusted devices, off
+by default. When on, admitting a device, entering Offline mode, keep-key, and
+disabling require an `APPROVAL` (kind 24311) signed by a second trusted `E.pub`
+naming the operation, requester, a unique request-id and a 10-minute expiry.
+Verifiers reject reuse and expiry.
+
+**Labels** are written by the Sender at enrollment and edited only from trusted
+devices. A Receiver MUST NOT set or change its own label.
 
 ### 7.2 Server enrollment
-A server is a Nostr-speaking service with a stable enrollment keypair `S` and an HTTPS base URL.
 
-1. Server displays a QR: `qrst://<S.npub>?v=1&mode=server&url=<https base url>` (or a copied URI, QRST §12.1).
-2. Phone scans. Client prompts: **"Backup password"** — pre-filled with a generated six-word PGP phrase (~96 bits) the user may keep or replace with anything; no minimum, no rules. The screen carries two lines: **"If this server is ever hacked, this password is the only thing protecting your key,"** and **"Anyone who knows your npub and this server can try a few dozen passwords a day."** Server enrollment, and any entry of the backup password, happens only on trusted devices; a restricted device MUST NOT present a backup-password field. A strength meter MAY be shown; it MUST NOT block.
-3. Client runs §4.2 setup against `<url>` with the password entered in step 2. The server stores `salt`, `blob`, `k_srv`, `verifier`; nothing else about the key.
-4. Client shows the **mode screen** (§7.3).
+A server is a Nostr-speaking service with a stable enrollment keypair `S` and an
+HTTPS base URL.
 
-Enrolling a second server repeats steps 1–3; the blob is uploaded to every enrolled server. In threshold mode a trusted device re-wraps `CK` for the new server (§7.5a); no reconstruction.
+1. Server displays a QR: `qrst://<S.npub>?v=1&mode=server&url=<https base url>`.
+2. Phone scans. Client sets up backup factors per §4.2 — passkey by default where
+   available, passphrase always. Backup setup happens only on trusted devices; a
+   restricted device MUST NOT present a passphrase field.
+3. Client runs §4.2 setup against `<url>`.
+4. Client shows the mode screen (§7.3).
+
+Enrolling a second server repeats steps 1–3; the blob is uploaded to every server.
+
+**A machine MUST NOT hold both indices.** A device that runs a server holds share
+1; if it also enrolls as a device it holds share 2, and the pair is the key. Where a
+user points server enrollment at software running on a machine that is already an
+enrolled device, the client MUST refuse and say why. Self-hosting is supported and
+recommended for offline availability, but the server must run somewhere the user is
+not also signing from — a spare phone, a home server, a VPS.
+
+**Two servers from one operator are one server.** Per §7.4 all server replicas hold
+share 1, so a second Cloudflare deployment adds availability and no independence.
+Where a user enrolls a second server the client SHOULD say so and offer a
+different-operator or self-hosted option.
 
 ### 7.3 Mode screen (mandatory, shown once per server enrollment)
-Shown only if the device list contains **at least two devices, at least one of them trusted** (a native app). With fewer, threshold signing is not offered and the enrollment is backup-only. Two browsers alone do not qualify: both would hold index 2 and neither could refresh, help, or disable. With exactly one trusted device, losing it means recovery is via the backup (§7.10); the client says so on this screen.
 
-Exactly two options. **B is preselected.**
+Shown only if the device list contains at least one trusted device. Exactly two
+options. **B is preselected.**
 
 > **A — Threshold signing**
-> Your key is split into pieces so no device or website holds a usable copy; the only full copy is your encrypted backup. Any device can post and read DMs while your server or another of your devices is reachable, and any device can be revoked. Your server sees what your other devices post (not the contents of DMs). To use a device with nothing reachable, turn on **Offline mode** for it first — it needs a tap from one of your other devices.
+> Your key is split so that no device and no website holds a usable copy. Every
+> device needs your server to sign or to read a DM, which is what lets you cut any
+> device off instantly. **If no server is reachable, that device cannot post or read
+> DMs.** You can run a server yourself — an old phone or a home PC — so you are not
+> dependent on anyone else's. To use a device with nothing reachable at all, turn on
+> **Offline mode** for it first.
 >
 > **B — Backup only (recommended)**
-> Your key stays on all your devices as it is now. The server holds an encrypted backup you can restore with your password.
+> Your key stays on all your devices as it is now. The server holds an encrypted
+> backup you can restore with your passkey or passphrase.
 
-The client MUST NOT enable threshold signing by any path other than the user selecting A on this screen or in settings. Selecting A later from settings shows the same text and the same two-device requirement.
+The client MUST NOT enable threshold signing by any path other than the user
+selecting A here or in settings.
 
 ### 7.4 Threshold parameters
-- Scheme: FROST per RFC 9591 with the secp256k1 Taproot variant as implemented by `frost-secp256k1-tr` (Zcash Foundation). Concretely: if `pubkey(nsec)` has odd y, the dealer uses `a_0 = n − nsec` so the group key is even-y; group nonce commitment parity is handled per that ciphersuite at each signing round. Implementations MUST use that ciphersuite or one interoperable with it. On reconstruction (§7.5a, §7.15) the result is `n − nsec` for an odd-y key; the client MUST re-negate before storing or exporting. ECDH is unaffected because x-only.
+
+- Scheme: FROST per RFC 9591 with the secp256k1 Taproot variant as implemented by
+  `frost-secp256k1-tr`. If `pubkey(nsec)` has odd y, the dealer uses `a_0 = n − nsec`
+  so the group key is even-y. On reconstruction the result is `n − nsec` for an
+  odd-y key; the client MUST re-negate before storing or exporting. ECDH is
+  unaffected because x-only.
 - `t = 2`.
-- Index `1` is the **server index**. Every enrolled server holds a replica of share 1.
-- Index `2` is the **restricted index**. Every restricted-role device holds a replica of share 2.
-- Trusted devices hold indices `3..N`, one per trusted `E.pub` in the device list.
-- Replicas share an index and therefore never combine: any number of servers is one share; any number of restricted devices is one share. Valid signing pairs are server + restricted, server + trusted, restricted + trusted, trusted + trusted.
+- **Index `1` is the server index.** Every enrolled server holds a replica of share 1.
+- **Index `2` is the device index. Every device holds a replica of share 2,
+  regardless of role.**
+- **Replicas share an index and never combine.** Any number of servers is one share;
+  any number of devices is one share. The only valid signing pair is **server +
+  device**.
 - Polynomial at activation:
   ```
   a_0 = nsec (parity-adjusted per above)
   a_1 = random mod n                       // MUST be fresh randomness; never derived from the nsec
   f(x) = a_0 + a_1·x
-  share_j = f(j)
+  share_1 = f(1)    share_2 = f(2)
   ```
-  A deterministic `a_1` would let a re-activation reproduce an old polynomial and resurrect revoked shares; it is forbidden.
-- Epoch: `{counter, id}` where `counter` increments and `id` is random 128 bits. A member orders epochs by `counter`. Two honest refreshes racing produce the same `counter` with different `id`s: the **lower `id` wins**; a member that has applied the loser discards that share (it kept the pre-refresh share until both ACKs cleared — see §7.9) and applies the winner; the losing initiator, on seeing the winner, re-initiates on top of it if its purpose (a removal, an exit) is still unmet. Members retain the previous-epoch share until they see an **epoch-finalized marker** (`EPOCH_FINALIZED`, kind 24319, wrapped to members; group-key-signed) listing ACKed indices — or 7 days elapse, or a newer verified epoch supersedes, whichever first; ACKs flow only member→initiator, so the marker is what makes retention observable to everyone else. A re-activation (§7.10) sets `counter = max(any record found, unix_time)` + 1.
-- **Epoch record**: kind 30242, `d = "frost"`, encrypted under the group secret (§7.1) with a **plaintext tag `["epoch", counter]`** so a member holding a stale group secret can still tell that a newer epoch exists, content `{epoch, t, group_pub, commitment: a_1·G, members: [{index, E.pub|S.pub, role}]}`, signed by the group key (via FROST once active). `commitment` lets any member verify any share or partial: `share_j·G == group_pub + commitment·j`. It is updated on every refresh (§7.9).
+  A deterministic `a_1` would let a re-activation reproduce an old polynomial and
+  resurrect revoked shares; it is forbidden.
+- Epoch: `{counter, id}`, `counter` incrementing, `id` random 128 bits. Members order
+  by `counter`; on a tie the **lower `id` wins**. Members retain the previous-epoch
+  share until an `EPOCH_FINALIZED` marker (kind 24319) arrives, 7 days elapse, or a
+  newer verified epoch supersedes.
+- **Epoch record**: kind 30242, `d = "frost"`, encrypted under the group secret with
+  a plaintext tag `["epoch", counter]`, content
+  `{epoch, t, group_pub, commitment: a_1·G, members: [{index, E.pub|S.pub, role, admitted}]}`,
+  signed by the group key via FROST once active — which requires server **and** a
+  device, so neither can publish a record alone.
+
+**The architecture in one line.** The share grants no authority alone; `E` grants
+access to the co-signer; revoking `E` removes access; rotation (§7.9) removes the
+retained share's usefulness; Re-split (§7.11) removes the share.
 
 ### 7.5 Activation (user chose A)
-Performed by the device that chose A, which still holds the nsec. Every device, including this one, receives a share; no device keeps the nsec.
-1. Derive epoch-1 polynomial. Compute share 1 and one share per device in the device list.
-2. Gift-wrap `KEY_SHARE {epoch: 1, t: 2, index, share, group_pub, lock}` (kind 24305) to each server `S.pub` and each other device `E.pub`; store own share per §2.1.
-3. Publish the epoch record (signed with the nsec directly; this device still holds it).
-Activation is journaled: the device writes `{stage, epoch, issued: [...]}` per §2.1 before each step and resumes idempotently after a crash — re-sending unACKed shares, re-publishing the record — and performs step 4 only after steps 1–3 are durably complete.
-4. Wipe the local nsec **and every synced copy**: delete the `kSecAttrSynchronizable` Keychain item, delete the Block Store record. Write in their place a small synced **threshold marker** `{group_pub, epoch}` so a device restored from platform backup knows to enroll for a share (§2.4) rather than expect a key.
-(Blob upload, if a server is being enrolled at the same time, happens in §7.2 step 3 *before* this activation, while the nsec is still present.)
 
-**Where the full key still exists after activation**, stated so §5 does not overclaim:
-- On any device that has not yet ACKed the epoch. Such a device holds the nsec and **cannot be revoked by refresh**; removing it from the list only stops future shares. The lock MUST be amber until every device ACKs, and the devices screen MUST mark each non-ACKed device "still holds full key."
-- In the §4.2 backup, by design, under the user's password.
-- In any §4.1 ncryptsec file or printed QR the user exported before activation; those survive by definition and the activation screen reminds the user they exist.
-- On a keep-key device, by the user's explicit choice.
+Performed by the device that chose A, which still holds the nsec.
+
+1. **Offer backup (§4.1) and complete it or record an explicit decline.**
+2. Derive the epoch-1 polynomial. Compute share 1 and share 2.
+3. Gift-wrap `KEY_SHARE {epoch: 1, t: 2, index, share, group_pub, commitment,
+   group_secret, lock}` (kind 24305) to each server `S.pub` (index 1) and each
+   device `E.pub` (index 2); store own share per §2.1.
+4. Publish the epoch record, signed with the nsec directly.
+5. Wipe the local nsec **and every synced copy** — delete the synchronizable
+   Keychain item, delete the Block Store record — and write a synced **threshold
+   marker** `{group_pub, epoch}` in their place.
+
+Activation is journaled: the device writes `{stage, epoch, issued: [...]}` per §2.1
+before each step, resumes idempotently after a crash, and performs step 5 only once
+steps 1–4 are durably complete.
+
+On receiving `KEY_SHARE`, a device verifies `group_pub` against the user's known
+x-only pubkey **and** `share·G == group_pub + commitment·2`, stores the share, wipes
+its nsec, and gift-wraps `SHARE_ACK {epoch}` (kind 24306). A device offline at
+activation keeps its nsec and continues in base mode until its share arrives.
+
+**Where the full key still exists after activation:**
+
+- On any device that has not yet ACKed. It holds the nsec and cannot be revoked by
+  rotation. The lock MUST be amber and the devices screen MUST mark it "still holds
+  full key."
+- In the §4.2 backup, by design.
+- In any `ncryptsec` file or printed QR exported before activation.
+- On a keep-key device, by explicit choice.
 
 ### 7.5a Reconstructing operations
-With the §4.2 content-key indirection, changing the backup password and enrolling an additional server re-wrap `CK` on a trusted device and never reconstruct. **Disable (§7.15), and Re-split (§7.11, which is disable + re-activate), are the only reconstructing operations.** It is privileged: one prompt on the device; with two-device approval on (§7.1), also one tap elsewhere. Refresh, joint issuance, share-1 replication, password change, and server enrollment never reconstruct.
 
-`CK` travels to trusted devices in `KEY_SHARE` / `KEY_SHARE_PART` (trusted indices only; never to index 2 or to servers) and is stored per §2.1.
+**Disable (§7.15) and Re-split (§7.11) are the only operations that reconstruct.**
+Rotation, share issuance, share-1 replication, changing a backup factor and server
+enrollment never do. `CK` travels to trusted devices in `KEY_SHARE` and is stored
+per §2.1; servers never hold `CK`.
 
-**Keep-key option.** A user MAY mark one device "Keep the full key on this device" in settings. Approval: the same second-trusted-device tap as Offline mode entry (§7.14), with the prompt "*Laptop* wants to keep your full key permanently. Allow?" — required regardless of the two-device-approval setting. That device is a **bunker**: it keeps the nsec, signs alone, and can issue and refresh alone. A bunker **cannot be revoked** — refresh changes shares, not the nsec — and the client says so when the option is chosen. This is off by default.
-
-On receiving `KEY_SHARE`, a device verifies that `group_pub` equals the user's known x-only pubkey **and** `share·G == group_pub + commitment·index`, stores the share per §2.1, wipes its nsec, and gift-wraps `SHARE_ACK {epoch}` (kind 24306) to the activating device's `E.pub`. A device offline at activation keeps its nsec and continues in base mode until it receives its share.
-
-The **lock indicator** is green only when every device in the device list has ACKed the current epoch. Until then it is amber with the count ("2 of 3 devices").
+**Keep-key option.** A user MAY mark one trusted device "Keep the full key on this
+device," with a second trusted device's tap and the prompt "*Laptop* wants to keep
+your full key permanently. Allow?" That device is a bunker: it keeps the nsec, signs
+alone, and **cannot be revoked**. Off by default; the client says so.
 
 ### 7.6 Signing and what the co-signer sees
-A FROST co-signer must see the message it signs. **Every event a share-only device signs through the server is visible to the server in plaintext**, including DM envelopes (not their contents, which are NIP-44-encrypted before signing). Trusted-device co-signers see the same. §7.3 discloses this.
 
-- Default: device share + server share. The requester sends the **full unsigned event**, not a 32-byte digest; the co-signer serialises and hashes it itself (NIP-01), so it knows the kind and content it is signing. Every co-signer — server **or trusted device** — MUST check the requester's role before completing a round: for a restricted requester it signs only kinds on an **enumerated allowlist** shipped with the client and server (reference set: 0, 1, 3, 5, 6, 7, **13**, 16, 30023; deployments may extend it deliberately) and refuses everything else — in particular 30242 and 10002. Kind 13 is required: NIP-17 DMs are sent by group-key-signing the *seal* (the 1059 wrap is signed by a one-time key, so 1059 never legitimately reaches a co-signer). Kind 10002 is refused for restricted requesters because rewriting the relay list assists the record-withholding attacks §2.4 and §7.9 defend against. Kind 5 is signed only after checking its `e`/`a` tags: a deletion referencing any kind-30242 coordinate is refused, since it would let an origin destroy the device list or epoch record and manufacture the §2.4 "absence" branch. An allowlist is used because "alters the device list or backup" is not evaluable for future kinds; a denylist here fails open as the ecosystem adds kinds. (§7 rumors are sealed by `E`, not the group key, so a co-signer never sees or signs them; the guard for those is §7.9 step 4(a).) `/v1/sign` and the relay path both carry the requester's `E.pub` signature so this can be applied. Requests and rounds are gift-wrapped between `E.pub` and `S.pub` over relays or `<url>/v1/sign` over HTTPS; both MUST be supported, HTTPS tried first.
-- Server unreachable (timeout 5 s on all replicas): the client tries any trusted device in the list — a keep-key or Offline-mode device first, since those need no round — over relays, LAN (QRST §11.7), or BLE (native apps only; the same single-message wrap bytes over a GATT characteristic — profile UUIDs live in an implementation companion, not this spec). Trusted devices and servers complete rounds for **trusted** members silently (§2.2). A trusted device completes rounds for a **restricted** requester only if it has itself probed every enrolled server in the last 60 s and none answered; otherwise it refuses with "use the server," so a site cannot route around the server's audit by asking a phone instead. With **zero servers enrolled** the condition is vacuously satisfied by design: trusted devices are then the normal co-signers for everyone. Trusted co-signers keep the same per-requester log and apply the same alert rule as servers (§7.13). A restricted device completes a *signing* round only for a **trusted** requester and only for kinds 30242 and ordinary content, as a last resort when no server or trusted device answered; it never completes rounds for restricted requesters and never ECDH for anyone. This is what lets the minimum §7.3 configuration (one trusted device, one browser, one server) remove a compromised server: the phone initiates the refresh, the browser co-signs the epoch record. The requesting client shows **"Signing via *Phone*…"**.
-- Nothing reachable: the draft is kept as an unsigned rumor with `created_at` fixed at compose time and signed at the first opportunity. The client shows **"Will post when your server or another device is reachable."** For local-only relays, the client points to Offline mode (§7.14).
+A FROST co-signer must see what it signs. **Every event a device signs is visible in
+plaintext to the co-signer**, including DM envelopes (not their NIP-44-encrypted
+contents).
+
+- **Only a server co-signs.** Devices share index 2 and cannot complete rounds for
+  each other. There is no device-to-device fallback; §7.14 Offline mode is the
+  answer for a device that must work with nothing reachable.
+- The requester sends the **full unsigned event**, not a digest; the co-signer
+  serialises and hashes it itself (NIP-01). Requests carry the requester's `E.pub`
+  signature.
+- The co-signer MUST refuse any request whose `E.pub` is absent from the current
+  epoch's member list, is not `admitted`, or is revoked.
+- For a **restricted** requester the co-signer signs only kinds on an enumerated
+  allowlist (reference set: 0, 1, 3, 5, 6, 7, **13**, 16, 30023) and refuses
+  everything else — in particular 30242 and 10002. Kind 13 is required for NIP-17
+  DMs. Kind 5 is signed only after checking its `e`/`a` tags: a deletion referencing
+  any kind-30242 coordinate is refused. An allowlist is used because "alters the
+  device list" is not evaluable for future kinds.
+- **Per-kind additional factors (OPTIONAL).** Because a co-signer is now mandatory,
+  a server MAY be configured to require an additional factor before signing
+  nominated kinds — a passkey assertion against the server, or an approval tap on a
+  trusted device. This is only expressible because no device can route around the
+  server. Defaults to off; when on, the affected kinds are shown on the devices
+  screen.
+- Requests are gift-wrapped between `E.pub` and `S.pub` over relays or
+  `<url>/v1/sign` over HTTPS; both MUST be supported, HTTPS tried first.
+- Nothing reachable: the draft is kept as an unsigned rumor with `created_at` fixed
+  at compose time and signed at the first opportunity. The client shows **"Will post
+  when your server is reachable"** and points to Offline mode.
 
 ### 7.6a Decryption (DMs and gift wraps)
-FROST produces signatures only. NIP-04/NIP-44 conversation keys and NIP-59 seal decryption need `ECDH(nsec, P) = nsec·P`, so a share-only device cannot decrypt alone. Threshold ECDH is one round:
+
+FROST produces signatures only. NIP-04/44 conversation keys and NIP-59 seal
+decryption need `ECDH(nsec, P)`, so a device cannot decrypt alone. Threshold ECDH is
+one round:
 
 ```
-Requester (index d) → co-signer (index c):  { P }                     wrapped to E.pub / S.pub, or /v1/ecdh
-Co-signer → requester:                      { λ_c·s_c·P }         after verifying P is on-curve and not the identity. (Each partial is a static-DH answer whose aggregate targets the *group* key, which refresh never changes — so the §7.13 hard ceiling, not refresh, is the control; at those query counts Cheon-style attacks on secp256k1 remain impractical.)
-Requester:                                  nsec·P = λ_d·s_d·P + λ_c·s_c·P
+Requester (index 2) → server (index 1):  { P }              wrapped to S.pub, or /v1/ecdh
+Server → requester:                      { λ_1·s_1·P }      after verifying P is on-curve and not the identity
+Requester aggregates:                    nsec·P = λ_1·s_1·P + λ_2·s_2·P
 ```
-The **requester aggregates**; the co-signer never learns `nsec·P`, only `P` and its own partial. Consequences, which §7.3 discloses:
-- Reading DMs and unwrapping NIP-59 gift wraps on a share-only device requires a co-signer reachable, exactly like posting. Clients SHOULD batch: one round can carry many `P` values.
-- The co-signer learns which `P` values the user is deriving keys for — for NIP-04/44 that is the peer's pubkey (DM metadata); for NIP-59 wraps it is a random one-time key (nothing).
-- Keep-key and Offline-mode devices decrypt alone.
-- The role rules apply: restricted devices may request; trusted devices and servers respond; restricted devices never respond to ECDH.
 
-### 7.7 Adding a device after activation (joint issuance)
-QRST Flow A or B runs unchanged through the code-entry step (QRST §9). The Receiver's index `j` is `2` if its role is restricted, otherwise the next unused index ≥ 3. Instead of one `KEY_TRANSFER`, the Receiver receives two `KEY_SHARE_PART` (kind 24307) wraps for `j`:
-```
-Sender device (index h):  r ← random mod n
-                          sends Receiver:  λ_h(j)·s_h − r
-                          sends Server:  r          (wrapped to S.pub)
-Server (index 1):         sends Receiver:  λ_1(j)·s_1 + r     (wrapped to the Receiver's burner `J.pub` from the QR, which the Sender forwards with `r`)
-Both parts also carry:    group_pub, commitment, epoch, group_secret   (so a fresh Receiver can verify without first reading the encrypted epoch record)
-Trusted Receiver only:      CK rides in the trusted helper's part — servers never hold CK (§7.5a)
-Receiver:                   share_j = sum of the two parts; verify share_j·G == group_pub + commitment·j, derive npub from group_pub, show "Log in as @name?" (a first-time Receiver has no prior pubkey to compare) — Yes → store
-```
-If the server is unreachable, any second **trusted** online device plays the server's role with its own index. Helpers are trusted devices and servers only; a restricted device MUST NOT act as Sender or helper. The Receiver ACKs; the Sender updates the device list and epoch record.
+The server never learns `nsec·P`, only `P` and its own partial. Clients SHOULD
+batch: one round can carry many `P` values. The server learns which `P` values the
+user derives keys for — for NIP-04/44 that is the peer's pubkey; for NIP-59 wraps a
+random one-time key. Keep-key and Offline-mode devices decrypt alone.
+
+### 7.7 Adding a device after activation
+
+QRST Flow A or B runs unchanged through the code-entry step. The Sender wraps
+`KEY_SHARE_PART` (kind 24307) carrying share 2, `group_pub`, `commitment`, `epoch`
+and `group_secret` to the Receiver's burner; `CK` rides along only when the Receiver
+is trusted.
+
+The Receiver verifies `share·G == group_pub + commitment·2`, derives the npub from
+`group_pub`, shows "Log in as @name?", stores on Yes, and ACKs. The Sender updates
+the device list with the new `E.pub`, `admitted: false`.
+
+**The new device cannot sign until admitted (§7.1).** Admission is a separate,
+privileged act on a trusted device or the server console, and is where the user
+sees the device by label before granting it anything. A hostile enrollment yields an
+inert share — which is why the QRST code ceremony is still required: an inert share
+becomes the key if share 1 ever leaks (§7.12).
+
+Only trusted devices may act as Sender.
 
 ### 7.8 Adding a server replica
-Same as §7.7 with `j = 1`. Alternatively an existing server, on a gift-wrapped instruction from a device, wraps share 1 directly to the new server's `S.pub`. Either path is one QR scan for the user.
 
-### 7.9 Refresh (one tap; replaces rotation)
-Triggered from settings ("Rotate keys") on a trusted device, and automatically on device removal, Offline-mode exit, and after §7.10 recovery. No share is released and nothing is reconstructed.
+An existing server, on a gift-wrapped instruction from a trusted device, wraps share
+1 directly to the new server's `S.pub`. Alternatively a trusted device that is
+running §7.15 disable may issue it. One QR scan for the user. See §7.2 on
+independence.
 
-1. The initiating trusted device picks random `r` mod n and sets `epoch + 1`. It first obtains a group signature over the new epoch record with **old** shares (it and a co-signer, before any delta is applied), so the record can be signed while everyone still shares a polynomial.
-2. It gift-wraps `KEY_REFRESH {epoch, delta: r·j}` (kind 24309) to each member `j` still on the list (one wrap per replica, same `delta` for replicas of one index), (its own delta is applied in step 3).
-3. It publishes the already-signed epoch record with `commitment' = commitment + r·G` and the new group secret, then applies `r·own_index` to its own share.
-4. Each member verifies (a) the wrap's seal is signed by a **trusted** `E.pub` present on the member's current device list, and (b) `(share + delta)·G == group_pub + commitment'·j`; only then replaces its share and ACKs (kind 24306). Device-list updates MUST be published before any refresh wrap that depends on them. A member whose list does not contain the sender first re-fetches the list (once, up to 5 minutes) before deciding; a `KEY_REFRESH` still failing (a) MUST be discarded and MUST raise the red lock state ("a refresh was attempted by *example.com*").
+### 7.9 Revocation and rotation
 
-The group key is unchanged. Old shares are on a different polynomial and cannot combine with new ones. A removed member is simply not sent a delta. Members that miss the wrap receive it when next online (wraps live 30 days, §7.17, subject to relay retention — clients SHOULD publish §7 wraps to at least one relay the user controls or pays for); until then they cannot sign and the lock shows amber. A member holding shares from two epochs MUST discard the older once the newer verifies.
+Two tiers. The client presents them as one flow and performs both by default.
 
-**Removing a restricted device.** All restricted devices share index 2, so a hostile origin with two browsers enrolled keeps share 2 if only one is removed. Removal is therefore **per origin**: removing a site removes every restricted entry with that origin, and the delta for index 2 goes only to surviving origins. (Sending survivors a delta is fine: an honest survivor does not leak `r` to a removed device, and a hostile one already held the share.)
+**Tier 1 — revoke `E` (immediate).** A trusted device or the server console marks an
+`E.pub` revoked in the current epoch's member list and publishes the record. Every
+co-signer MUST refuse all rounds for that `E.pub` from that moment. This takes
+effect without touching any share and without contacting the revoked device. It is
+the whole of revocation for a device that is merely retired.
 
-**Refresh war.** A compromised trusted device can refresh with itself and a server as the only members, excluding the rest; another trusted device can do the same back. There is no in-protocol resolution. The resolution is §7.10 recovery from the backup on a clean device, followed by re-activation with a list that excludes the compromised device.
+**Tier 2 — rotate (makes the retained share useless).** A revoked device keeps its
+copy of share 2 forever. Rotation puts the surviving members on a new polynomial so
+that the retained share no longer pairs with share 1.
 
-The initiator learns nothing about any other member's share. Note that `delta = r·j` with `j` public, so **every member learns `r`**, and a removed member's old share plus `r` is a valid new share. This has a lasting consequence: **a share from any past epoch, plus every `r` since, is a current share** — and every current member has seen every `r`. So a lost trusted device's stale share stays dangerous forever to any current member that obtains it, including a hostile site, silently and without the server. Refresh cannot fix this at `t = 2` with linear deltas. The fix is **Re-split** (§7.11): disable and re-activate in one flow, which draws a fresh random `a_1` and severs the algebraic link to every old share. The client recommends Re-split, not refresh, when the removed member is a trusted device that may have been lost rather than merely retired. Only trusted devices may initiate; servers and restricted devices never do, and members enforce this per step 4(a). An epoch record is authoritative only if it is accompanied by a `KEY_REFRESH` (or `KEY_SHARE` at activation) that passed step 4(a); a kind-30242 event on its own is not trusted. §7.6's refusal and this rule are deliberately redundant: the first stops an honest server from helping, the second stops a dishonest one from mattering.
+```
+δ(x) = r·x,  r ← random mod n,  δ(0) = 0        // a_0 untouched: nothing is reconstructed
+server:   share_1 ← share_1 + r
+device:   share_2 ← share_2 + 2r                 // released only to an admitted, unrevoked E.pub
+record:   commitment' = commitment + r·G,  epoch + 1,  fresh group secret
+```
+
+1. A trusted device or the server console initiates. The epoch record for `epoch + 1`
+   is signed by the group key with **old** shares before any delta is applied, so it
+   requires server and one device — neither can rotate alone.
+2. The server releases `2r` to each admitted, unrevoked `E.pub`, authenticated by
+   `E`. **The share is not proof of anything and MUST NOT be treated as one:** `2r`
+   is inert without a valid share 2, so no proof-of-possession round is needed, and
+   `E` remains the only credential in the flow.
+3. Each device applies the delta, verifies `share·G == group_pub + commitment'·2`,
+   and ACKs (kind 24306).
+4. **The server MUST destroy the old-epoch share 1** — overwrite and verify, with no
+   retained version history, snapshot, backup or log line. A revoked device's
+   retained share 2 plus a surviving old share 1 is the key, so a store that keeps
+   prior versions silently defeats rotation. On Cloudflare KV or a Durable Object
+   this is not automatic; the rotation journal MUST record the overwrite and its
+   verification.
+
+Devices that miss the wrap receive it when next online (§7 wraps live 30 days).
+Until then they cannot sign and the lock shows amber.
+
+**What rotation does not do.** A surviving device can hand `r` to a revoked one;
+that is the same trust already placed in it by giving it a share. And rotation does
+not help when share 1 itself may have leaked, because the attacker sees the new
+share 1 too — that case is §7.12.
+
+Automatic rotation runs on device revocation, Offline-mode exit and after §7.10
+recovery.
 
 ### 7.10 Recovery (all devices lost)
-1. New device (native app; a browser MUST NOT offer recovery): enter server URL and backup password (or scan a server QR that carries the URL). A user who has forgotten the URL MAY have opted, at enrollment, to publish a plaintext `["backup-hint", "<url>"]` tag on the device list (off by default; it tells the world where to aim online guesses, per §4.2).
-2. Recover per §4.2 (password proof, rate-limited) → backup blob. Decrypt locally (roughly one to three seconds at `log_n = 18`, 256 MiB).
-3. The device now holds the nsec in base mode. The client MUST then prompt to **change the backup password** (re-running §4.2 setup) and MUST offer to **drop or replace the server** it just recovered from, since a compromised server is a common reason to be recovering. No server is re-enrolled automatically.
-4. If the epoch record shows threshold mode was on, the client offers to re-activate (§7.5) with a fresh epoch and the new device list; old members are excluded because they are not on it, and only servers the user kept in step 3 receive share 1.
+
+1. New device (native app; a browser MUST NOT offer recovery): enter server URL and
+   present a recovery factor — the passkey where one is enrolled, otherwise the
+   passphrase. A user who has forgotten the URL MAY have opted at enrollment to
+   publish a plaintext `["backup-hint", "<url>"]` tag on the device list (off by
+   default).
+2. Recover per §4.2. A passkey factor releases immediately; a passphrase enters the
+   delay with notices to any surviving device.
+3. The device now holds the nsec in base mode. The client MUST prompt to **change
+   the backup factors** and MUST offer to **drop or replace the server** it recovered
+   from. No server is re-enrolled automatically.
+4. If the epoch record shows threshold mode was on, the client offers to re-activate
+   (§7.5) with a fresh `a_1` and a new device list.
+
+**The passkey factor requires a synced platform credential.** Where the client is a
+desktop native app with no sync fabric, or where the platform authenticator is
+device-bound, the passkey factor is unavailable for recovery by construction and the
+passphrase is the only path. The client MUST say which factors are actually usable
+for recovery on the backup status line, not merely which are enrolled.
 
 ### 7.11 Device removal
-Settings → device → **Remove**. In threshold mode the client asks: **"Do you still physically control this device, and was it wiped?"** Yes → retired. No or unsure (lost, stolen, sold, traded in) → lost, the default; extractable storage on a sold device is "lost" in every way that matters. Retired → refresh (§7.9) with the device excluded. Lost (default) → **Re-split**: §7.15 disable and §7.5 re-activation as one journaled operation on a trusted device (reconstructing, privileged, subject to two-device approval), which makes the lost device's share algebraically useless rather than merely stale. Restricted removal is per origin (§7.9). A bunker device cannot be revoked this way (§7.5); the client says so. In backup-only mode the label reads "Forget device (its copy of your key is not affected)" per §3.2.
+
+Settings → device → **Remove**. The client asks: **"Do you still physically control
+this device, and was it wiped?"**
+
+- **Yes → retired.** Revoke `E` and rotate (§7.9).
+- **No or unsure → lost, the default.** Revoke `E`, rotate, and offer **Re-split**.
+
+**Re-split** is §7.15 disable plus §7.5 re-activation as one journaled operation on a
+trusted device — reconstructing, privileged, subject to two-device approval. It draws
+a fresh random `a_1`, severing the algebraic link to every old share. It is required
+only when share 1 may have leaked (§7.12) or when a device that held both indices
+(keep-key, Offline mode) is lost. For an ordinary device, tiers 1 and 2 of §7.9 are
+sufficient, because a lost device's share 2 is useless against a rotated share 1.
+
+A bunker device cannot be revoked at all (§7.5a); the client says so.
 
 ### 7.12 Server compromise
-Attacker obtains share 1 and the backup blob. Share 1 alone signs nothing. The blob is protected by the password at `log_n = 18`; its strength is the user's choice per §7.2. By the spec's own algebra (§7.9), a plain refresh cannot revoke a share that has already been exfiltrated: the dumped share 1, plus the stream of future `r` values that every current member sees, remains a current share — and a hostile restricted origin that obtains the dump can then reconstruct silently. The remedy is therefore **Remove server + Re-split** (§7.11): exclude the server, then disable-and-reactivate with a fresh random `a_1`, severing the algebraic link to the stolen share. The client performs Re-split, not refresh, for server compromise whenever any restricted device is enrolled, and recommends it even when none is. It then prompts to change the backup password (a `CK` re-wrap, §7.5a) and to delete the blob on the removed server.
 
-**Blob and share 1 on one host.** In threshold mode a compromised server holding both, plus a weak password, is the key — undercutting "no server holds a usable key" for exactly the users who chose weak passwords. The client MUST offer, at second-server enrollment, to place the blob on a different host than share 1 ("Keep backup and signing on separate servers"), and MUST offer at first enrollment a generated recovery phrase (six PGP words, ~96 bits) as the password, pre-filled and editable. Neither is required; the §7.2 warning line stays.
+The attacker obtains share 1 and the blob. Share 1 alone signs nothing; the blob is
+protected by the enrolled factors. But **share 1 plus any device's share 2 is the
+key**, and rotation cannot help because the attacker sees each new share 1.
 
-### 7.13 Hostile restricted device
-A hostile site holds share 2. Alone it signs nothing. With the server it can sign — as can any enrolled device — and this is visible to the server and revocable by refresh. It cannot: combine with other sites (same index); act as Sender or helper; request share 1; enter Offline mode, keep-key, or disable without a tap on a trusted device that names it and the consequence; or see a backup-password field (from honest code — see the phishing path below). Holding the group secret, it **can read the device list and epoch record**: device count, roles, `E.pub`s, and user-written labels ("Dana's laptop") — metadata a phishing page can weaponize for convincing prompts. Its worst case is **posting as the user and reading every DM the user has ever received** (via §7.6a ECDH with the server) until it is removed — **plus a phishing path to the full key**: the hostile origin *is* the client on that device, so "MUST NOT present a backup-password field" binds honest code only. A pixel-perfect "confirm your backup password" dialog, plus the user's npub and a knowable server URL, is the key via `/v1/recover` — the site gets the password right, not guessed, so rate limits don't apply. This cannot be prevented in-protocol; it is bounded by the recovery delay (§4.2), which makes the theft visible and cancellable from any trusted device, and softened by the generated six-word phrase: a user who kept it has only ever typed it on a trusted device, so a website asking for it reads as wrong. Stated as residual risk in §5. It cannot enter Offline mode at all (§7.14).
+The remedy is **Remove server + Re-split**: exclude the server, then
+disable-and-reactivate with a fresh `a_1`. The client performs Re-split, not
+rotation, for any suspected server compromise. It then prompts to change the backup
+factors and to delete the blob on the removed server.
 
-**Audit surface.** Every co-signer (server or trusted device) keeps a per-requester log of signing and ECDH rounds (kind, timestamp, peer pubkey for ECDH) and sends it to trusted devices as a daily `AUDIT_DIGEST` wrap (24317; alerts are 24318); the devices screen shows it per device. A server MUST notify trusted devices when index 2's ECDH peer count or signing rate in the last hour exceeds both an absolute floor (25 distinct ECDH peers, or 50 signatures, in an hour) and five times its trailing-week hourly median ("*example.com* is decrypting your DMs in bulk — remove it?"). During the first 24 hours after an origin's enrollment the same thresholds produce a differently worded, non-alarming notice ("*example.com* just synced *N* conversations") rather than silence — the first sync is exactly when a hostile site would read everything, and the user should see that it happened. Rate alerts alone can be boiled slowly, so there is also a **cumulative cap** — sized against NIP-59 mechanics: every incoming gift wrap uses a fresh random ephemeral key, so one-shot `P`s are ordinary mail, while **recurring `P`s (seen in two or more rounds) are conversation keys**, and a burst of them is the signature of a bulk history read. The cap counts only recurring `P`s: co-signers refuse ECDH for a restricted origin beyond 200 distinct *recurring* peers per rolling 7 days; exceeding it requires a one-tap raise on a trusted device ("*example.com* wants to read more of your conversation history"). Never-repeating `P`s are bounded by the hourly ceiling alone. The **hard ceiling** is 500 ECDH responses per hour per requester, counted **per `P`** (a batch of n peers consumes n), bounding the §7.6a static-DH oracle quantitatively. Users MAY disable DM decryption for restricted devices entirely in settings ("Websites can read DMs" toggle, default on).
+**Blob and share 1 on one host.** A compromised server holding both, plus a weak
+passphrase and no passkey factor, is the key. The client MUST offer at
+second-server enrollment to place the blob on a different host than share 1, and
+§4.2's generated-phrase rule applies.
 
-### 7.14 Offline mode (a trusted device temporarily holds a threshold)
-UI label: **Offline mode**. A toggle in every **trusted** device's settings. Never required for any function. Not available to restricted devices: two shares at `t = 2` is the key, and a device that has held the key cannot be un-given it by refresh — so granting Offline mode to a website would be granting it the key permanently. The toggle on a restricted device is shown disabled with "Not available in a browser."
-- **Enter.** The toggle sends an `OFFLINE_REQUEST` to every other trusted device in the list. The user taps **Allow** on any one of them — a trusted device, never a server. The prompt names the requester by its Sender-set label and states the consequence in one line: **"*Laptop* wants to hold your full key offline. Allow?"** That device and the server (or a third trusted device) then jointly issue the requesting device a second index, taken from the trusted range `≥ 3` (§7.7). The epoch record gains `offline: {index_pair, E.pub, since}`. The toggle explains: "Needs a tap on one of your other devices. Turn this on before you go offline."
-- **While on.** The device signs and decrypts alone with its two shares.
-- **Exit.** The device runs a refresh (§7.9) as initiator and discards its second index, sending no delta for it. No other device's *approval* is required, but relays (or LAN/BLE reach to the members) are: the deltas must be delivered, so exit completes when the device is back in contact. The discarded share is on the old polynomial and dead by construction. The device is **trusted to have discarded** the reconstructable key — this is the same trust already placed in it as a trusted device, and it is why the mode is trusted-only.
-- Any trusted device may end a *cooperative* device's Offline mode by refreshing without a delta for the second index. Against a **suspect** device this is a no-op: the target keeps its primary membership, receives its primary delta, learns `r` from it, and can update the retained second share. Ending Offline mode for a device you no longer trust is therefore **Re-split** (§7.11, "lost"), same as any other suspect trusted device.
+### 7.13 Hostile device
+
+A hostile origin holds share 2 — the same share every device holds. Alone it signs
+nothing and decrypts nothing. Admitted, it can sign allowlisted kinds and request
+ECDH through the server, and this is visible to the server and revocable in one act
+(§7.9 tier 1).
+
+It cannot: combine with any other device (same index); act as Sender or issuer;
+initiate rotation; admit or revoke devices; enter Offline mode or keep-key; or see a
+passphrase field from honest code. Holding the group secret, it **can read the device
+list and epoch record** — device count, roles, `E.pub`s and user-written labels —
+metadata a phishing page can weaponise.
+
+Its worst case is **posting as the user and reading every DM the user has ever
+received** until revoked, **plus a phishing path to the full key**: the hostile
+origin is the client on that device, so "MUST NOT present a passphrase field" binds
+honest code only. A pixel-perfect "confirm your backup passphrase" dialog plus the
+npub and a knowable server URL is the key via `/v1/recover`. §4.2 answers this in
+three ways and none is complete: a passkey factor means the passphrase alone no
+longer suffices where one is enrolled; the recovery delay makes the theft visible and
+cancellable; and the mandatory generated phrase means a user has only ever seen it
+inside this client, so a website asking for it reads as wrong. Stated as residual
+risk in §5.
+
+**Audit surface.** Every co-signer keeps a per-requester log of signing and ECDH
+rounds (kind, timestamp, peer pubkey for ECDH) and sends it to trusted devices as a
+daily `AUDIT_DIGEST` (kind 24317; alerts are 24318). A server MUST notify trusted
+devices when a restricted requester's ECDH peer count or signing rate in the last
+hour exceeds both an absolute floor (25 distinct ECDH peers, or 50 signatures) and
+five times its trailing-week hourly median. During the first 24 hours after
+admission the same thresholds produce a differently worded, non-alarming notice
+("*example.com* just synced *N* conversations") rather than silence.
+
+Rate alerts alone can be boiled slowly, so there is also a **cumulative cap**. Every
+incoming gift wrap uses a fresh random ephemeral key, so one-shot `P`s are ordinary
+mail while **recurring `P`s are conversation keys**, and a burst of them is the
+signature of a bulk history read. Co-signers refuse ECDH for a restricted origin
+beyond 200 distinct *recurring* peers per rolling 7 days; exceeding it requires a
+one-tap raise on a trusted device. The **hard ceiling** is 500 ECDH responses per
+hour per requester, counted per `P`. Users MAY disable DM decryption for restricted
+devices entirely ("Websites can read DMs" toggle, default on).
+
+These limits are enforceable rather than advisory because no device can answer a
+round for another (§7.6).
+
+### 7.14 Offline mode
+
+UI label: **Offline mode**. A toggle in every **trusted** device's settings. Never
+required for any function. Not available to restricted devices: a device holding both
+indices holds the key, and a device that has held the key cannot be un-given it by
+rotation.
+
+- **Enter.** The toggle sends an `OFFLINE_REQUEST` (kind 24308) to every other
+  trusted device. The user taps **Allow** on one of them — a trusted device, never a
+  server. The prompt names the requester and the consequence: **"*Laptop* wants to
+  hold your full key offline. Allow?"** A server (or an approving trusted device)
+  then issues the requester a replica of **share 1**. The epoch record gains
+  `offline: {E.pub, since}`.
+- **While on.** The device signs and decrypts alone with both shares.
+- **Exit.** The device discards its share-1 replica and initiates rotation (§7.9),
+  which requires reaching the server. The discarded replica is on the old polynomial
+  and dead by construction. The device is **trusted to have discarded** it, which is
+  why the mode is trusted-only.
+- Ending Offline mode for a device you no longer trust is **Re-split** (§7.11), not
+  rotation: the target still holds a share-1 replica and would receive its own delta.
 
 ### 7.15 Disabling threshold signing
-Settings → "Turn off threshold signing." Available only on trusted devices. This is the one operation that reconstructs the nsec: the device collects one other share (a server releases share 1 to a trusted requester; with two-device approval on, only with an `APPROVAL`), then:
-0. **Pre-refresh.** Before reconstructing, the client runs one §7.9 refresh whose member set is only the trusted devices and unflagged servers — every restricted origin (and any server the user flags on the disable screen) is excluded and receives no delta. Their shares are now on a dead polynomial *by construction*, not by their cooperation, before deletion is even requested. Then the device collects one other share, reconstructs, and **durably stores the nsec per §2.1 before anything else** — a crash after members delete but before the key is stored would otherwise be unrecoverable in a serverless deployment with no export on file.
-1. Wraps `DISABLE {epoch}` (kind 24314, 30-day TTL) to every member, and publishes the epoch record marked `disabled` with a plaintext `["epoch", counter]` tag. **Servers MUST delete share 1 and every member MUST delete its share, `CK`, and the group secret** on receiving a `DISABLE` whose seal is from a trusted `E.pub` on the current list — and, when two-device approval is on, whose attached `APPROVAL` verifies; without it members MUST NOT delete, or a single compromised trusted device gets a remote wipe that bypasses the setting. For the remaining (trusted + server) members, deletion is what kills the final-epoch shares; the pre-refresh in step 0 already ensured that no share outside that set survives algebraically, so a website that never processes the notice holds nothing.
-2. Each trusted device replies `DISABLE_ACK` (kind 24315) carrying a fresh burner. The initiator wraps `KEY_TRANSFER` to **that burner** with the QRST §11.4 600 s TTL — never to `E.pub`, so no nsec ciphertext is ever addressed to a long-lived key on a relay.
-3. Restricted devices are **not** sent the key by default — the screen lists them and lets the user tick any to include (those also go via a burner); the rest re-enroll by transfer (QRST) when next used. A trusted device that misses the 600 s window comes back to a `disabled` record with its share deleted; it shows the Receiver QR and re-enrolls by transfer (QRST) from any device that now holds the key. Trusted devices store the nsec per §2.1 on receipt. Re-enabling is §7.5.
+
+Settings → "Turn off threshold signing." Trusted devices only. This is the one
+operation that reconstructs the nsec: the device collects share 1 from a server (with
+an `APPROVAL` where two-device approval is on), then:
+
+0. **Pre-rotation.** Before reconstructing, run one §7.9 rotation whose member set
+   excludes every revoked or unwanted device. Their shares are on a dead polynomial
+   by construction, not by their cooperation, before deletion is even requested. Then
+   reconstruct and **durably store the nsec per §2.1 before anything else** — a crash
+   after members delete but before the key is stored is otherwise unrecoverable.
+1. Wrap `DISABLE {epoch}` (kind 24314, 30-day TTL) to every member and publish the
+   epoch record marked `disabled` with a plaintext `["epoch", counter]` tag. **Servers
+   MUST delete share 1 and every device MUST delete its share, `CK` and the group
+   secret** on receiving a `DISABLE` whose seal is from a trusted `E.pub` on the
+   current list — and, where two-device approval is on, whose `APPROVAL` verifies.
+2. Each trusted device replies `DISABLE_ACK` (kind 24315) carrying a fresh burner. The
+   initiator wraps `KEY_TRANSFER` to **that burner** with QRST's 600 s TTL, never to
+   `E.pub`, so no nsec ciphertext is addressed to a long-lived key on a relay.
+3. Restricted devices are **not** sent the key by default; the screen lists them and
+   lets the user tick any to include. The rest re-enroll by transfer when next used. A
+   trusted device that misses the window comes back to a `disabled` record with its
+   share deleted and shows the Receiver QR.
 
 ### 7.16 Lock indicator
-Shown in settings and on the compose screen. Every state has a distinct **shape**, a distinct **colour**, and a **text label always adjacent**; colour is never the only channel.
+
+Shown in settings and on the compose screen. Every state has a distinct **shape**, a
+distinct **colour**, and a **text label always adjacent**; colour is never the only
+channel.
 
 | State | Colour | Glyph | Label |
 |---|---|---|---|
-| Split (default) | Green | Closed lock with checkmark | "No single device holds your key" |
+| Split (default) | Green | Closed lock with checkmark | "No device holds your key on its own" |
 | Keep-key | Green | Closed lock with phone silhouette | "Full key on *Phone*; other devices hold pieces" |
 | Offline mode | Blue | Closed lock with single-figure badge | "Offline mode on *Laptop* since *date* — tap to end" |
 | Pending | Amber | Half-open lock with three dots | "Waiting for *N* devices" |
+| Unadmitted | Amber | Half-open lock with a plus | "*N* devices waiting to be allowed" |
 | Flagged | Red | Lock with exclamation | "Rotate recommended: *reason*" |
 | Off | Grey | Open outline lock | "Threshold signing off" |
 
-Glyphs MUST remain distinguishable at 16 px in monochrome. The indicator is informational; it MUST NOT emit notifications or block any action.
+Glyphs MUST remain distinguishable at 16 px in monochrome. The indicator is
+informational; it MUST NOT emit notifications or block any action.
 
-### 7.17 Rumor kinds (complete list)
+### 7.17 Rumor kinds
 
-Transfer kinds are defined in QRST §11.4 and are not repeated here. These are
-this document's own.
+Transfer kinds are defined in QRST §11.4 and are not repeated here.
 
 | Kind | Name | Direction |
 |---|---|---|
 | 24305 | KEY_SHARE | issuer → member |
 | 24306 | SHARE_ACK | member → issuer |
-| 24307 | KEY_SHARE_PART | helper → Receiver (§7.7) |
+| 24307 | KEY_SHARE_PART | Sender → Receiver (§7.7) |
 | 24308 | OFFLINE_REQUEST | requester → trusted devices |
-| 24309 | KEY_REFRESH | initiator → member |
-| 24311 | APPROVAL | second trusted device → server / helper (§7.1) |
+| 24309 | KEY_ROTATE | initiator or server → member |
+| 24311 | APPROVAL | second trusted device → server (§7.1) |
 | 24314 | DISABLE | initiator → member (§7.15) |
-| 24315 | DISABLE_ACK | trusted member → initiator, carries a fresh burner (§7.15) |
+| 24315 | DISABLE_ACK | trusted member → initiator (§7.15) |
 | 24316 | RECOVERY_NOTICE | server → registered devices (§4.2) |
 | 24317 | AUDIT_DIGEST | co-signer → trusted devices (§7.13) |
 | 24318 | ALERT | co-signer → trusted devices (§7.13) |
 | 24319 | EPOCH_FINALIZED | initiator → members (§7.4) |
 
-All placeholders. 24301–24304, 24310, 24312 and 24313 are no longer used by this
-document; the transfer messages that occupied them are QRST 24401–24407.
+All placeholders. 24301–24304, 24310, 24312 and 24313 are unused.
 
 All are sealed and wrapped exactly as QRST §11.4 specifies, with one difference:
-**§7 wraps use `expiration = now + 30 days`**, not the ten-minute transfer TTL,
-so offline members can still receive them. A member offline longer than 30 days
-misses the wrap; on return it finds a newer epoch record than its share and
-re-enrolls via joint issuance (§7.7), which any trusted device can do from the
-devices screen.
+**§7 wraps use `expiration = now + 30 days`**, not the ten-minute transfer TTL, so
+offline members can still receive them. A member offline longer than 30 days misses
+the wrap; on return it finds a newer epoch record than its share and re-enrolls via
+§7.7.
 
 ## Appendix A — References
-NIP-07, NIP-44, NIP-49, NIP-59. RFC 9591 (FROST). BIP-340. Transfer: [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md).
+
+NIP-07, NIP-44, NIP-49, NIP-59. RFC 9591 (FROST). BIP-340. WebAuthn Level 3 (PRF
+extension). Transfer: [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md).

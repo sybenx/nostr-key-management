@@ -82,28 +82,22 @@ rework then reversed that model entirely — under it two devices hold the *same
 share and cannot reconstruct — so the property this entry tracked no longer holds;
 see the two entries below.
 
-### Threshold mode without a server is unreachable — obsoleted by 9.0
+### Threshold mode without a server is unreachable — resolved in 9.1
 
-Filed against the 8.0 model, in which any two shareholders reconstruct and a
-serverless configuration was named as the only one with no second party to collude
-with. The 9.0 "replicas by index" rework removed that configuration. Under §7.4
-every device holds a replica of index 2, replicas of one index never combine, and
-§7.6 states plainly that only a server co-signs — "there is no device-to-device
-fallback." There is therefore no serverless-threshold mode to make reachable, and
-no two-shareholders-reconstruct property to answer: any number of devices is one
-share and yields nothing alone. Availability with nothing reachable is met by a
-self-hosted server (§7.2) or Offline mode (§7.14), and §7.3 being triggered by
-server enrollment is now correct, since threshold signing requires a co-signer. The
-§5 and §7.6 text this entry quoted no longer exists.
+Filed against the 8.0 model. The 9.0 "replicas by index" rework made the server a
+mandatory co-signer, which removed the serverless configuration entirely rather than
+making it reachable — and, as later review found, reduced threshold signing to a
+better bunker that forgoes FROST's actual value. **9.1 answers the entry directly by
+building the missing mode:** §7.18 defines the serverless device quorum (2-of-N
+across the user's own devices, unique shares, no server in the signing path),
+selectable at §7.3, which is now triggered by threshold enablement rather than only
+by server enrollment. The mode this entry asked for exists and is reachable.
 
-### `t` is a constant, not a parameter — obsoleted by 9.0
+### `t` is a constant, not a parameter — resolved in 9.1
 
-The entry wanted `t = 3` so that two colluding shareholders would be survivable.
-The 9.0 "replicas by index" rework makes that survivability structural rather than a
-function of the threshold. The only two share-classes are the server (index 1) and
-the devices (index 2); any number of devices is one share, and two devices cannot
-combine (§5, §7.6). Colluding devices therefore yield nothing, and the single
-meaningful signing pair is server + device. `t = 2` is intrinsic to the two-index
-design; a third independent index would be a different architecture, not a parameter
-of this one. The concern the entry raised is answered by the redesign, not by
-raising `t`.
+The entry wanted `t` to be a parameter so that surviving two colluding shareholders
+was possible. In the co-signer mode `t = 2` remains intrinsic (server class + device
+class). In the new device-quorum mode (§7.18) `t` is a parameter: `2` by default,
+and `3` where the user has three or more independent trusted devices, trading "any
+two present" for "surviving any two compromised." The choice is surfaced only where
+the device list can satisfy it, exactly as the entry proposed.

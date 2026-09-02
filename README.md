@@ -29,15 +29,22 @@ giving something up, it is picked for them.
 
 ## Why this is not NIP-46
 
-NIP-46 is a signing protocol for a remote signer. A remote signer has to be
-reachable for every single event signature, whereas a device that has received a
-key under this spec does not *need* a second device at all. If FROST is
-activated, only 2 of N devices are required, and special device authorizations in
-the spec allow for fully offline signing from a single device.
+NIP-46 is a signing protocol for a remote signer that holds the whole key and must
+be reachable for every signature. This project's threshold signing comes in two
+modes that each improve on something real (NKM §7):
 
-NIP-46 does not specify a key transfer method, nor how to store a key, whether it
-is backed up, or what happens when the machine is lost. This project is intended
-to fill some or all of those gaps.
+- **Device quorum** — a serverless 2-of-N across your own devices. Any two sign; no
+  server exists; nobody in the middle sees anything. This is the thing NIP-46
+  structurally cannot do, and it's the upgrade to copy-pasting your nsec between your
+  devices.
+- **Co-signer** — a server holds one share, your device the other. This *is* the
+  NIP-46 shape, made strictly better: the server never holds your whole key, and a
+  breached server can neither reconstruct alone nor forge (it can't complete a
+  signature without one of your devices).
+
+NIP-46 also does not specify a key transfer method, nor how to store a key, whether
+it is backed up, or what happens when the machine is lost. This project fills those
+gaps too.
 
 ## What this project is not
 
@@ -47,14 +54,14 @@ is running it over infrastructure nobody operates for the purpose.
 
 ## Status
 
-QR_SECRET_TRANSFER.md is version 1.2-draft. The event kinds are placeholders and
-may change, and the test vectors are incomplete: the §6 short code is covered in
-[vectors/](vectors/), the payload ceiling that P1 requires is not.
+QR_SECRET_TRANSFER.md is version 1.3-draft, adding the `frost://` scheme and the
+light returned-secret flow (§12.3) for revocable shares. The event kinds are
+placeholders and may change, and the test vectors are incomplete: the §6 short code
+is covered in [vectors/](vectors/), the payload ceiling that P1 requires is not.
 
-NOSTR_KEY_MANAGEMENT.md is version 9.0-draft. The `frost-share` profile in §3.3 is
-now consistent with the transfer spec's one-sender model — under §7.4's index
-scheme every device holds the same share, so issuance is one Sender, one Receiver,
-one payload.
+NOSTR_KEY_MANAGEMENT.md is version 9.1-draft, adding the serverless device-quorum
+threshold mode (§7.18) alongside the server co-signer. The `frost-share` profile
+(§3.3) carries either shard type and is delivered by a single Sender in both modes.
 
 This project benefits from devs and users pressure testing the claims of the
 spec. Failure modes will be handled within reason to improve it. Structural

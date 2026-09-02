@@ -1,6 +1,6 @@
 # QR Secret Transfer — Specification
 
-Version 1.2-draft
+Version 1.3-draft
 Applies to: any two devices moving a secret between them under user supervision
 
 Key words MUST, MUST NOT, SHOULD, MAY are normative.
@@ -140,6 +140,9 @@ A profile defines one kind of payload. It is identified by a string matching
 5. Its confirmation copy for §9 — what the Sender's prompt says is being sent.
 6. Any additional message tags, which MUST NOT collide with the reserved names
    in §11.4.
+7. Whether it declares the light flow of §12.3 — permitted only where the payload
+   is revocable and admission-gated, and a substitute for the SAS, never for the
+   consent of §9.
 
 A profile MAY restrict which parties are permitted to act as Sender.
 Implementations MUST ignore tags they do not recognise.
@@ -315,7 +318,10 @@ confirmation at step 16 remains required.
 ## 9. Consent and confirmation
 
 Two distinct user actions, on two devices. Both are mandatory and neither may be
-defaulted, remembered, or suppressed.
+defaulted, remembered, or suppressed. The **code comparison of §9.2** is the one
+part a profile may replace: a profile that declares the light flow of §12.3 (a
+revocable, admission-gated payload) substitutes a returned-secret handshake for the
+typed SAS. The two consent actions below are never waived.
 
 ### 9.1 Release consent, on the Sender
 
@@ -762,6 +768,49 @@ Flow B proceeds unchanged from immediately after the scan, and every requirement
 of §6 and §9 applies as written. Two clients implementing different bootstrapping
 channels will not pair.
 
+### 12.3 The `frost://` scheme and the light share flow
+
+`nostr-nsec` moves an irreversible secret and MUST use the QR + SAS + consent flow
+of §§6–9, or `ncryptsec` export (NKM §4.1); it never uses this section. A profile
+whose payload is **revocable and externally gated** — inert until a separate
+admission step authorises it, and revocable afterwards — MAY instead declare the
+light flow here. `frost-share` (NKM §3.3) is the only such profile defined: a
+threshold share is inert until the receiving device is admitted (NKM §7.1) and
+revocable by rotation (NKM §7.9).
+
+**Carrier.** The pairing token is carried as a **`frost://` URI** — a custom scheme
+so it reads as a token to hand to an app, and opens the app when tapped, which an
+`https` link does not. It carries the same parameters as §11.2 plus a `secret`:
+
+```
+frost://<npub>?v=1&mode=<offer|request>&p=frost-share&relay=<wss>&secret=<hex>
+```
+
+The QR form for this flow stays the `https` fragment link of §11.2 (fragment
+privacy, camera-read); `frost://` is for pasting and deep-linking, where legibility
+and tap-to-open matter and there is no host to protect.
+
+**Handshake — a returned secret, not a human code.** In place of the SAS (§6) and
+its typed comparison (§9.2), the showing party puts a fresh 32-byte `secret` in the
+token; the other party echoes it inside its first sealed message; the shower
+proceeds only if the echo matches. This is the NIP-46 mechanism (NIP-46's
+`nostrconnect`/`bunker` secret). It authenticates that the peer **received the
+token**, not that a human compared two screens, and it is one-and-done: no code is
+shown, typed, or read back by hand.
+
+**What it stops, and what it does not.** The returned secret stops a party that
+never received the token — a racing responder, an overheard relay. It does **not**
+stop interception of the token itself: whoever obtains the token obtains the
+secret. That residual is accepted here, and only here, because the payload (a)
+is not the key, (b) is inert until the user admits the receiving device by label
+(NKM §7.1), and (c) is revocable afterwards (NKM §7.9). A profile whose payload
+lacks all three MUST NOT use this flow, and MUST use the SAS.
+
+**Consent still applies, lightened.** The Sender's release consent (§9.1) is still
+shown and still fails closed on friction tier, but in the share profile's words
+(NKM §3.3) rather than the irreversible-key wording of `nostr-nsec`. The Receiver's
+acceptance confirmation (§9.4) still shows the P5 rendering and still requires a tap.
+
 ## 13. Multiple responders
 
 The receiving side treats the **first responder** — the first distinct burner to
@@ -835,6 +884,10 @@ decrypt; and messages discarded by the session-window test of §11.4.
 - **Pairing by copied URI widens the delivery channel for that risk**, since a URI
   can be sent in a message while a QR must be placed in front of the user. §12.1
   requires extra friction on the direction where this matters.
+- **The §12.3 light flow trades the SAS for a returned secret**, and so does not
+  stop a party that intercepts the token itself. It is confined to payloads that are
+  not the key, are inert until admitted, and are revocable (the threshold share of
+  NKM §7.18); no irreversible secret may use it.
 - **An operator sees both halves of a session.** T4 covers unlinkability to
   long-lived identity only. A relay carrying both parties observes a subscription
   for one burner and wraps addressed to the other, seconds apart, and can pair
@@ -857,9 +910,11 @@ source of the commit-then-reveal construction of §6, by way of Matrix.
 
 ## Status
 
-Version 1.2-draft. Two things are missing: the event kinds of §11.4 are
-unregistered placeholders and will change, and the test vectors are incomplete —
-the SAS of §6 is covered in `vectors/`, but the one at the declared payload
-maximum that P1 requires is not.
+Version 1.3-draft. 1.3 adds the `frost://` scheme and the light returned-secret
+flow of §12.3, for revocable, admission-gated payloads (the threshold share of NKM
+§7.18). Two things are still missing: the event kinds of §11.4 are unregistered
+placeholders and will change, and the test vectors are incomplete — the SAS of §6
+is covered in `vectors/`, but the one at the declared payload maximum that P1
+requires is not.
 
 Implementation has begun. Review is more useful than deployment at this stage.

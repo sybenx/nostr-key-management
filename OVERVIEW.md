@@ -42,16 +42,32 @@ always ask, and that permission lasts for exactly one transfer.
 code, or a server. Skippable, and if you skip it the app never nags — the status
 just sits in settings.
 
-**Threshold signing (optional).** Splits the key so no single device, site or
-server holds a usable copy, and makes it possible to actually revoke a device.
-You need at least two devices, or a device and a server. The trade is that
-posting now needs something else reachable, and whatever co-signs for you sees
-what you post.
+**Threshold signing (optional), in two flavours.** Splitting the key so no single
+device or site holds a usable copy comes two ways, and you pick the one that
+matches what you have:
 
-**Recovery.** Server address and password. If threshold mode is on there's a
-delay — a day by default — during which your other devices are told a recovery
-started and can approve or cancel it. With no devices left, the delay just
-passes.
+- **Device quorum.** Your key lives split across *your own devices*; any two of them
+  sign together, and no server is involved at all. Nobody in the middle, nothing to
+  be reachable but your devices. The trade: two devices present to post, and removing
+  one re-keys the rest. This is the real upgrade to copy-pasting your nsec between
+  your devices.
+- **Co-signer.** A server you (or someone) runs holds one piece; your device holds
+  the other; every signature needs both. This is what lets you log in on the web and
+  cut off any device instantly — and unlike a remote signer, the server never holds
+  your whole key and a breach of it can't post as you. The trade: the server must be
+  reachable, and it sees what you post. This is the upgrade to a remote signer or a
+  browser extension.
+
+Both make it possible to actually revoke a device; both keep any one site or device
+from holding a usable key.
+
+**Recovery.** With a co-signer, it's the server address and a password, and if
+threshold mode is on there's a delay — a day by default — during which your other
+devices are told a recovery started and can approve or cancel it; with no devices
+left, the delay just passes. A device quorum has no server to recover from: two
+surviving devices already are the key, and below that you restore the backup you
+were offered at setup — which is why, in that mode, skipping the backup makes your
+devices the only copy.
 
 ## What's underneath
 
@@ -67,15 +83,26 @@ for another mid-transfer.
 
 **Storage.** A ladder, probed silently, strongest rung that works.
 
-**Server (optional).** Holds an encrypted backup of the key, and in threshold
-mode one share. The backup is protected by a password of the user's choosing, and
-the setup screen says plainly that if the server is breached, that password is
-the only thing left.
+**Server (optional).** Holds an encrypted backup of the key, and in co-signer mode
+one share — never the whole key. The backup is protected by a password of the
+user's choosing, and the setup screen says plainly that if the server is breached,
+that password is the only thing left. Device-quorum mode uses no server at all.
 
-**Threshold signing.** FROST over the same signature scheme Nostr already uses,
-so signatures look ordinary to everyone else. Any two shareholders can sign.
-Adding or removing a device re-keys the others without the key ever being
-reassembled.
+**Threshold signing.** FROST over the same signature scheme Nostr already uses, so
+signatures look ordinary to everyone else. Any two shareholders sign; the key is
+never reassembled to do it. In device-quorum mode the two are two of your devices;
+in co-signer mode they are a device and the server. Removing a device re-keys the
+others (a rotation), which is what makes revocation real.
+
+**Why the co-signer beats a remote signer on its worst day.** A remote signer or a
+browser extension holds your *whole key* — breach it once and the attacker has
+everything and can post anything. The co-signer holds one share: breach it and the
+attacker gets something that is **not your key, can't sign on its own** (it can't
+complete a signature without one of your devices), **and can't impersonate you**.
+To actually reconstruct they'd have to breach one of your devices too — two
+independent compromises instead of one. That's strictly better than every option
+Nostr gives you today, on the exact surface (an always-online server) those options
+are worst on.
 
 ## What this protects against, and what it doesn't
 
@@ -91,10 +118,13 @@ otherwise:
   site can behave correctly for everyone who reviews it and act only against one
   chosen person, so reputation is the wrong instrument. The only structural
   answer is not giving a website a usable key, which is what threshold mode is.
-- **Two shareholders who collude.** In threshold mode any two of them can
-  reconstruct the key by simply exchanging their pieces — there's no protocol
-  step to log or refuse. Enrolling no server at all, and letting your own devices
-  co-sign, is the only configuration where that has no second party.
+- **Two shareholders who collude.** In any threshold scheme, any two who together
+  meet the threshold can reconstruct the key by simply exchanging their pieces —
+  there's no protocol step to log or refuse; it's what "threshold" means. In
+  co-signer mode that pair is the server plus any one device; in device-quorum mode
+  it's any two of your devices. Device quorum is the configuration where both
+  colluders would have to be your own hardware — which is why its shares only ever
+  go on devices you own.
 - **A compromised device you're already using.** Same as any wallet.
 - **Being wrong about the mathematics.** Every other failure has a fallback. This
   one doesn't, and because a Nostr key *is* the identity, there's no rotation in

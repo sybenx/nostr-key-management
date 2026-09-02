@@ -1,12 +1,13 @@
 # Nostr Key Transfer & Storage — Specification
 
-Version 9.0-draft
+Version 9.1-draft
 Applies to: any client that holds a user's nsec (web, desktop, mobile)
 
 > Transfer is specified in [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md) (QRST).
-> Changes from 8.0-rc1 are listed in `CHANGES-9.0.md`; the load-bearing ones are
-> the index architecture of §7.4, the two-tier revocation of §7.9, and the
-> passkey-default backup of §4.2.
+> 9.1 adds the **device-quorum** threshold mode (§7.18): a serverless 2-of-N across
+> the user's own devices, alongside the existing server co-signer, chosen at §7.3.
+> The load-bearing pieces from 9.0 remain: the index architecture of §7.4, the
+> two-tier revocation of §7.9, and the passkey-default backup of §4.2.
 
 Key words MUST, MUST NOT, SHOULD, MAY are normative.
 
@@ -239,22 +240,26 @@ offline path used to carry.
 
 ### 3.3 Profile `frost-share`
 
-Registered against QRST §5. Gives a joining device the device share (§7.7).
+Registered against QRST §5. Gives a joining device a single threshold share — a
+**generic** index-2 replica for the co-signer mode (§7.7), or a **unique** index
+share for a device quorum (§7.18). One payload either way; the `index` field says
+which, and the paste-delivered form uses the `frost://` carrier of QRST §12.3.
 
 | QRST requirement | This profile |
 |---|---|
-| Payload encoding | The 32-byte share-2 scalar, 64 lowercase hex characters, plus `group_pub`, `commitment`, `epoch`, `group_secret`. |
+| Payload encoding | The 32-byte share scalar, 64 lowercase hex characters, plus `index`, `group_pub`, `commitment`, `epoch`, `group_secret`. `index = 2` is the co-signer replica; `index ≥ 1` unique is a quorum share. |
 | Max size | Default (2048 B). |
-| P4 check | `share·G == group_pub + commitment·2`. |
-| P5 rendering | The identity the share belongs to, and that this device will hold **one share, not the key** — it cannot sign alone and cannot sign at all until the user admits it at a server (§7.7). |
+| P4 check | `share·G == group_pub + commitment·index`. |
+| P5 rendering | The identity the share belongs to, and that this device will hold **one share, not the key** — it cannot sign alone, and cannot sign at all until admitted (§7.1). For a quorum share it also names that two of your devices must be present to sign. |
 | §5 prompt wording | "Give *X* a share of your key." Materially less severe than `nostr-nsec`: a share alone signs nothing, and the device can be revoked. |
 | Additional tags | `enroll`, as above. |
 
-> **Resolved in 9.0.** In 8.0 this profile did not fit QRST's model: §7.7 had the
-> joining device receive two partials from two parties, which QRST's one-Sender
-> attribution check rejects. Under §7.4's index architecture every device holds the
-> same share, so issuance is a copy from one Sender — one Sender, one Receiver, one
-> payload. No carve-out to QRST is required.
+> **One Sender, either shard type.** The co-signer replica is a copy from one
+> Sender by construction (every device holds the same index-2 share). A quorum share
+> is unique, but is still delivered by a single Sender: two existing devices compute
+> `f(k)` jointly *before* the transfer (§7.18), and one of them sends the finished
+> share. QRST never sees two partials, so its one-Sender attribution check is
+> satisfied in both modes and no carve-out is required.
 
 ---
 
@@ -387,7 +392,7 @@ Base:
   to the OS user account or browser profile (level 2), or plaintext (level 1).
 - A compromised unlocked device yields the key. Without §7, Nostr has no rotation.
 
-Threshold mode (§7):
+Co-signer mode (§7.1–§7.17):
 
 - **No two devices can sign, reconstruct, or conspire.** Every device holds a
   replica of index 2 (§7.4), and replicas of one index never combine. Any number of
@@ -419,6 +424,26 @@ Threshold mode (§7):
   declared in §0 and stated on §7.3's screen. Self-hosting a server (§7.2) and
   Offline mode (§7.14) are the answers; both require the user to act in advance.
 
+Device quorum (§7.18):
+
+- **Any `t` devices are the key.** Each device holds a unique share, so any `t` of
+  them (two by default) reconstruct by exchanging shares — intrinsic to threshold
+  signing, not a defect. This is why shares go only on hardware the user owns, and
+  why the mode has no restricted members.
+- **No third party.** Nobody outside the user's devices sees an event or a
+  conversation peer, and nothing but the user's own devices need be reachable. The
+  price is the mirror of the co-signer's chokepoint: no server-enforced policy, no
+  rate limits, no instant revocation — removal is rotation (§7.9), and revocation is
+  forward-only.
+- **A compromised device is worse here than under a co-signer.** It holds a real
+  unique share and needs only one more; a second compromised or colluding device is
+  the key, with no server round to refuse it. One lost device alone is inert — no
+  honest device will co-sign with a revoked `E` — until a second is taken.
+- **No reachable second device means no signing**, and below `t` surviving devices
+  the only recovery is the §4 backup. A quorum with neither is unrecoverable.
+- A phished backup passphrase is the residual risk here too, bounded by §4.2's
+  factors exactly as in co-signer mode.
+
 ---
 
 ## 6. Out of scope for v1
@@ -433,10 +458,28 @@ reduces attack surface going forward; it repairs nothing backwards.
 
 ---
 
-## 7. Server: mandatory co-signer and threshold signing
+## 7. Threshold signing
 
-Threshold signing is opt-in per §7.3. A user who never enables it is unaffected by
-this section. Once enabled, a co-signer is required by construction.
+Threshold signing is opt-in per §7.3, and comes in **two modes the user chooses
+between**. They are mutually exclusive per key, because they use different
+polynomials.
+
+- **Co-signer** (§7.1–§7.17). A server holds one share and every signature needs
+  it. This is a *better bunker*: the server never holds the whole key, a breached
+  server cannot forge (it cannot complete a signature without a device) and cannot
+  reconstruct alone (it needs a device's share too), and it still gives you what a
+  bunker gives — web and restricted-device access, instant revocation, and
+  enforceable server-side policy. A co-signer is required by construction once this
+  mode is on. It is the upgrade to a remote signer or an extension.
+- **Device quorum** (§7.18). The key is split across the user's own devices with
+  **no server in the signing path**; any two co-sign. It removes the third party
+  entirely — nobody sees your events, nothing must be reachable but your own
+  devices — at the cost of needing two devices present to post and of
+  rotation-based revocation. It is the upgrade to moving a whole nsec between your
+  devices.
+
+A user who never enables either is unaffected by this section. §7.1–§7.17 describe
+the co-signer mode; §7.18 gives the device-quorum mode by its differences from it.
 
 ### 7.1 Enrollment keys and device list
 
@@ -504,27 +547,45 @@ share 1, so a second Cloudflare deployment adds availability and no independence
 Where a user enrolls a second server the client SHOULD say so and offer a
 different-operator or self-hosted option.
 
-### 7.3 Mode screen (mandatory, shown once per server enrollment)
+### 7.3 Mode screen (mandatory)
 
-Shown only if the device list contains at least one trusted device. Exactly two
-options. **B is preselected.**
+Reached from settings' "Turn on threshold signing," and shown automatically the
+first time a server is enrolled. Shown only if the device list contains at least
+one trusted device. Three options. **C is preselected.**
 
-> **A — Threshold signing**
-> Your key is split so that no device and no website holds a usable copy. Every
-> device needs your server to sign or to read a DM, which is what lets you cut any
-> device off instantly. **If no server is reachable, that device cannot post or read
-> DMs.** You can run a server yourself — an old phone or a home PC — so you are not
-> dependent on anyone else's. To use a device with nothing reachable at all, turn on
-> **Offline mode** for it first.
+> **A — Device quorum (no server)**
+> Your key is split across your own devices. Any two of them sign together; none can
+> sign alone, and a lost device is a useless piece until a second is taken too.
+> Nothing outside your devices is ever reachable, and nobody sees what you post. The
+> trade: you need two of your devices present to post, and removing a device re-keys
+> the rest. Best when every device is your own.
+> *(Needs two or more trusted devices. No server.)*
 >
-> **B — Backup only (recommended)**
-> Your key stays on all your devices as it is now. The server holds an encrypted
-> backup you can restore with your passkey or passphrase.
+> **B — Co-signer (a server)**
+> Your key is split so that no device and no website holds a usable copy, and every
+> signature needs your server — which is what lets you log in on the web, cut any
+> device off instantly, and set rules the server enforces. Unlike a remote signer,
+> the server never holds your whole key and a breached server cannot post as you. The
+> trade: your server must be reachable to post, and it sees what you post. You can run
+> it yourself. To use a device with nothing reachable, turn on **Offline mode** for
+> it first.
+> *(Enrolls a server now if none is enrolled.)*
+>
+> **C — Backup only (recommended)**
+> Your key stays on all your devices as it is now. An encrypted backup you can
+> restore with your passkey or passphrase.
 
 The client MUST NOT enable threshold signing by any path other than the user
-selecting A here or in settings.
+selecting A or B here or in settings. **A** activates the device quorum of §7.18;
+**B** enrolls a server (§7.2) if none is present and activates the co-signer of
+§7.5.
 
 ### 7.4 Threshold parameters
+
+The ciphersuite, parity handling and epoch records below are shared by both modes.
+The index scheme (server at 1, devices replicating index 2, "only valid pair is
+server + device") is the **co-signer mode's**; §7.18 gives the device-quorum
+variant, where each device holds a unique index and there is no server index.
 
 - Scheme: FROST per RFC 9591 with the secp256k1 Taproot variant as implemented by
   `frost-secp256k1-tr`. If `pubkey(nsec)` has odd y, the dealer uses `a_0 = n − nsec`
@@ -625,8 +686,8 @@ contents).
   DMs. Kind 5 is signed only after checking its `e`/`a` tags: a deletion referencing
   any kind-30242 coordinate is refused. An allowlist is used because "alters the
   device list" is not evaluable for future kinds.
-- **Per-kind additional factors (OPTIONAL).** Because a co-signer is now mandatory,
-  a server MAY be configured to require an additional factor before signing
+- **Per-kind additional factors (OPTIONAL).** Because the co-signer is mandatory in
+  this mode, a server MAY be configured to require an additional factor before signing
   nominated kinds — a passkey assertion against the server, or an approval tap on a
   trusted device. This is only expressible because no device can route around the
   server. Defaults to off; when on, the affected kinds are shown on the devices
@@ -917,6 +978,78 @@ All are sealed and wrapped exactly as QRST §11.4 specifies, with one difference
 offline members can still receive them. A member offline longer than 30 days misses
 the wrap; on return it finds a newer epoch record than its share and re-enrolls via
 §7.7.
+
+### 7.18 Device quorum (2-of-N, serverless)
+
+The alternative to the co-signer mode of §7.1–§7.17, chosen at §7.3 and mutually
+exclusive with it. The key is split across the user's own devices with **no server
+in the signing path**; any two co-sign, none signs alone. It shares §7.1
+enrollment, §7.4's ciphersuite and epoch records, and §4 backup, and differs as
+below.
+
+**Trusted devices only.** Every share is a **unique** point on the polynomial, so
+any share plus any one other share is the key. A share therefore goes only on
+hardware the user owns: a device quorum has **no `restricted` members**. A user who
+needs web or restricted-device access uses co-signer mode instead.
+
+**Parameters.**
+- `t = 2` by default. A user with three or more independent trusted devices MAY
+  choose `t = 3` — "any three present" in exchange for surviving any two devices
+  being compromised. `t` is fixed at activation and changed only by re-activation.
+- Each device holds a **unique index** `i ≥ 1`, never a replica. `share_i = f(i)`,
+  verified `share_i·G == group_pub + commitment·i` (§7.4's check generalised from
+  the co-signer's fixed `·2`). Indices are assigned by the activating device and
+  recorded per member in the epoch record.
+- No index is reserved for a server; there is none.
+
+**Activation.** As §7.5, except the activating device evaluates `f` at a distinct
+index per member and gift-wraps each `KEY_SHARE` accordingly. Backup (§4) MUST be
+completed or explicitly declined first — it is the only recovery path, and the
+client SHOULD warn that declining it makes the quorum the sole copy of the key.
+
+**Signing.** Any two admitted, unrevoked devices run the two-round FROST signing of
+RFC 9591 with each other directly, over gift-wrapped rounds or the local path,
+combining with Lagrange coefficients over their two indices. No server is
+contacted. The initiator is the Coordinator, the other the co-signer; a device with
+no second device reachable cannot sign and the lock shows amber — the availability
+cost of removing the third party. ECDH decryption (§7.6a) is the same one round
+between two devices.
+
+**Adding a device.** No single device holds `f`, so the new share is issued jointly
+and QRST still sees one Sender:
+1. Two existing admitted devices each compute their Lagrange-weighted contribution
+   to `f(k)` at the new index `k` and combine them on one of the two — permissible
+   because those two already reconstruct in this trust model, so nothing is exposed
+   between them that the model did not already grant.
+2. That device is the QRST Sender and delivers the finished `share_k` to the joining
+   device as a single `frost-share` payload (QRST §12.3, `frost://`). The joining
+   device verifies `share_k·G == group_pub + commitment·k`, stores it
+   `admitted: false`, and is admitted by a trusted device (§7.1).
+
+**Revocation is rotation.** With no server to refuse a revoked `E`, device-quorum
+revocation is always the §7.9 rotation, computed jointly by any two surviving
+devices: they move to a fresh `a_1`, so the removed device's retained share no
+longer pairs with any surviving share. Honest devices also refuse to co-sign with a
+revoked `E.pub` in the current epoch, but the retained share is neutralised only by
+the rotation. One stolen device cannot sign — no honest co-signer will pair with it
+— and is not the key until a second device is also taken; rotation closes even that
+window going forward.
+
+**Recovery.** With `t` or more surviving devices there is nothing to recover — they
+hold the key. Below `t`, recovery is restoring the §4 backup (encrypted blob,
+`ncryptsec`, or printed code); there is no server-based §7.10 path. A quorum with no
+usable backup and fewer than `t` surviving devices is unrecoverable, which is why
+activation gates on backup.
+
+**Security.** Any `t` devices reconstruct the key by exchanging shares — intrinsic
+to threshold signing, not a defect, and the reason shares go only on your own
+hardware. There is no third party that sees your events or can deny signing, and no
+chokepoint for policy, rate limits, or instant revocation. A hostile or compromised
+device is more dangerous than under a co-signer: it holds a real unique share and
+needs only one more, so a **second** compromised or colluding device is the key.
+Keep the device count small, revoke-and-rotate promptly on any loss, and prefer
+co-signer mode wherever a device is not fully trusted. Stated as residual risk in
+§5.
 
 ## Appendix A — References
 

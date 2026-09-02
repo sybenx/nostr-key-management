@@ -48,7 +48,7 @@ is running it over infrastructure nobody operates for the purpose.
 ## Status
 
 QR_SECRET_TRANSFER.md is version 1.0-draft. The event kinds are placeholders and
-will change, and there are no test vectors yet.
+may change, and there are no test vectors yet.
 
 NOSTR_KEY_MANAGEMENT.md is version 8.0-rc1. The `frost-share` profile in §3.3 is
 marked do-not-implement: share issuance hands a device two partials from two

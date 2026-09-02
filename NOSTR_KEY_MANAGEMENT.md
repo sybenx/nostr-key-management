@@ -1,13 +1,15 @@
 # Nostr Key Transfer & Storage — Specification
 
-Version 9.1-draft
+Version 9.2-draft
 Applies to: any client that holds a user's nsec (web, desktop, mobile)
 
 > Transfer is specified in [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md) (QRST).
-> 9.1 adds the **device-quorum** threshold mode (§7.18): a serverless 2-of-N across
-> the user's own devices, alongside the existing server co-signer, chosen at §7.3.
-> The load-bearing pieces from 9.0 remain: the index architecture of §7.4, the
-> two-tier revocation of §7.9, and the passkey-default backup of §4.2.
+> 9.1 added the **device-quorum** threshold mode (§7.18): a serverless 2-of-N across
+> the user's own devices, alongside the server co-signer, chosen at §7.3. 9.2 gives
+> `frost-share` a passphrase-encrypted offline container (§3.3) for the no-transport
+> case, since a share has no `ncryptsec`. The load-bearing pieces from 9.0 remain:
+> the index architecture of §7.4, the two-tier revocation of §7.9, and the
+> passkey-default backup of §4.2.
 
 Key words MUST, MUST NOT, SHOULD, MAY are normative.
 
@@ -223,10 +225,11 @@ are both available.
 keep-key device — the only device that legitimately holds one. An Offline-mode
 device holds both indices and MUST NOT export.
 
-QRST defines no in-ceremony offline transfer (QRST §10). To move this key with no
-network — between two co-present screens — export it as NIP-49 `ncryptsec` (§4.1)
-and import it on the other device; that is the passphrase-encrypted form the QRST
-offline path used to carry.
+This profile does **not** permit QRST's offline tier (QRST §10). To move a whole key
+with no network — between two co-present screens — export it as NIP-49 `ncryptsec`
+(§4.1) and import it on the other device; that standalone form is exactly why the
+offline tier is unnecessary here (and why `frost-share`, which has no such form,
+does permit it — §3.3).
 
 ### 3.2 Transfer policy
 
@@ -253,6 +256,7 @@ which, and the paste-delivered form uses the `frost://` carrier of QRST §12.3.
 | P5 rendering | The identity the share belongs to, and that this device will hold **one share, not the key** — it cannot sign alone, and cannot sign at all until admitted (§7.1). For a quorum share it also names that two of your devices must be present to sign. |
 | §5 prompt wording | "Give *X* a share of your key." Materially less severe than `nostr-nsec`: a share alone signs nothing, and the device can be revoked. |
 | Additional tags | `enroll`, as above. |
+| Offline tier (QRST §10) | Permitted, as the passphrase-encrypted container below. A raw, unencrypted share MUST NOT be shown or pasted. |
 
 > **One Sender, either shard type.** The co-signer replica is a copy from one
 > Sender by construction (every device holds the same index-2 share). A quorum share
@@ -260,6 +264,31 @@ which, and the paste-delivered form uses the `frost://` carrier of QRST §12.3.
 > `f(k)` jointly *before* the transfer (§7.18), and one of them sends the finished
 > share. QRST never sees two partials, so its one-Sender attribution check is
 > satisfied in both modes and no carve-out is required.
+
+**Offline container.** Where no transport is reachable (QRST §10), the share is
+delivered as a passphrase-encrypted blob. A share is not a bare 32-byte key, so it
+has no NIP-49 `ncryptsec` form — that format is fixed to a 32-byte payload, and a
+share carries a second secret (`group_secret`) and the metadata to verify it. This
+profile therefore defines its own container over NIP-49's construction:
+
+- **KDF:** scrypt with `r = 8, p = 1, log_n = 18` (matching §4.1), over the
+  passphrase and a random 16-byte salt.
+- **Cipher:** XChaCha20-Poly1305 with a random 24-byte nonce; the version byte is
+  the associated data.
+- **Plaintext:** the entire QRST payload above — share scalar, `index`, `group_pub`,
+  `commitment`, `epoch`, `group_secret`, and `CK` when the receiver is trusted.
+  Sealing the whole payload, not only the scalar, also hides which identity the
+  share belongs to.
+- **Container:** `version (0x01) || log_n (1) || salt (16) || nonce (24) ||
+  ciphertext || MAC (16)`, then bech32 with HRP `frostshare` (per NIP-19, no length
+  limit). It is deliberately **not** an `ncryptsec1` string; the `frostshare1…`
+  prefix and its checksum mark it as a share and catch paste errors.
+
+The receiver decrypts, verifies `share·G == group_pub + commitment·index`, renders
+P5, and confirms (QRST §10 step 3). Offline delivery has no admission-independent
+gate beyond the passphrase, so it inherits the same reconstruction caveat as the
+§12.3 light flow: an intercepted blob whose passphrase is guessed, plus one other
+share, is the key.
 
 ---
 

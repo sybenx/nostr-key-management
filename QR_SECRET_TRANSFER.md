@@ -1,6 +1,6 @@
 # QR Secret Transfer — Specification
 
-Version 1.3-draft
+Version 1.4-draft
 Applies to: any two devices moving a secret between them under user supervision
 
 Key words MUST, MUST NOT, SHOULD, MAY are normative.
@@ -20,7 +20,9 @@ devices are capable of performing.
 ## 1. Overview
 
 The QR carries an address at which the showing device can be reached, plus
-transport hints. It never carries the secret.
+transport hints. It never carries the secret, except in the offline tier of §10 —
+available only to a profile that defines its own passphrase encryption — which has
+no transport to protect it.
 
 1. One device generates a burner keypair and shows its public half as a QR.
 2. The other scans it and generates its own burner keypair.
@@ -123,10 +125,12 @@ A Receiver may hold several candidate payloads simultaneously (§13) and commits
 at most one. A payload MUST tolerate being received, held, and wiped without side
 effects. Implementations MUST bound the number held (§9, §13).
 
-### P7 — Confidentiality from the transport
+### P7 — Confidentiality from the transport, except offline
 
-A payload need not encrypt itself; T3 covers it on the wire. A profile MAY still
-encrypt its payload for reasons of its own, but the mechanism does not require it.
+A payload need not encrypt itself; T3 covers it on the wire. The exception is the
+offline tier (§10), which has no transport: a profile that permits offline transfer
+MUST define its own passphrase-based encryption for that case (§5). A profile that
+defines none simply has no offline tier.
 
 ## 5. Profiles
 
@@ -143,6 +147,9 @@ A profile defines one kind of payload. It is identified by a string matching
 7. Whether it declares the light flow of §12.3 — permitted only where the payload
    is revocable and admission-gated, and a substitute for the SAS, never for the
    consent of §9.
+8. Whether it permits the offline tier (§10), and if so the passphrase encryption
+   satisfying P7. A profile that permits it MUST forbid a raw, unencrypted offline
+   encoding.
 
 A profile MAY restrict which parties are permitted to act as Sender.
 Implementations MUST ignore tags they do not recognise.
@@ -459,18 +466,37 @@ This side MUST NOT be presented as alarming. The confirmation is nonetheless
 mandatory: it is what prevents a party who photographed the QR from racing the
 real Sender and planting their own payload.
 
-## 10. No in-ceremony offline path
+## 10. Offline tier
 
-Earlier drafts carried an offline fallback here: the payload inside the QR,
-passphrase-encrypted, with no transport and no SAS. It is removed. It duplicated a
-path that already exists — a `nostr-nsec` payload is a private scalar, and NIP-49
-`ncryptsec` is exactly its passphrase-encrypted form, which the storage
-specification already exports and imports (NKM §4.1) — while forfeiting every
-property of §3 and offering nothing the SAS provides.
+Available only when no transport (§11.3) is reachable, the user confirms they are
+offline, and **the profile defines the passphrase encryption below** (§5). Not
+every profile does: `nostr-nsec` does **not**, because a whole key already has a
+standalone passphrase-encrypted form — NIP-49 `ncryptsec`, exported and imported by
+the storage spec (NKM §4.1) — so its no-network path is that manual export, not this
+tier. `frost-share` **does** (NKM §3.3), because a share has no such standalone
+export to fall back on.
 
-There is therefore no SAS-free transfer in this specification. A user with no
-network and two co-present screens SHOULD move the key by the profile's own
-encrypted export rather than through this mechanism.
+The payload travels inside the QR or the pasted text itself, so every transport
+property of §3 is forfeited and the profile's passphrase encryption is all that
+protects it (P7). There is no SAS and no returned secret here — the artifact *is*
+the transfer.
+
+1. The Sender prompts for a passphrase, with the line **"Anyone who photographs
+   this code or reads this text can try passwords against it forever; this
+   passphrase is the only protection."**
+2. The Sender renders the profile's passphrase-encrypted encoding of the payload —
+   as a QR, or as selectable text. A QR screen sets the platform screenshot-block
+   flag and auto-dismisses after 60 seconds; where no reliable flag exists (X11 has
+   none, Wayland is compositor-dependent) the Sender MUST warn that screenshots
+   cannot be blocked, and MAY then proceed.
+3. The Receiver scans or pastes, prompts for the same passphrase, decrypts, applies
+   the P4 check, renders per P5, and asks to confirm before committing.
+
+**Raw, unencrypted payload MUST NOT be offered.** A profile's offline encoding is
+passphrase-encrypted or it does not exist; a client MUST NOT hand over a bare share
+— or any bare secret — as text or QR, because a pasted secret persists in clipboard
+history and platform clipboard sync beyond the user's control, where the returned
+secret of §12.3 and the passphrase of this tier do not.
 
 ## 11. Transport binding: Nostr
 
@@ -582,6 +608,11 @@ relay — with a 3 s timeout. An implementation MAY additionally offer the optio
 local path of §11.7; where it does, it probes that concurrently and the first
 payload successfully received on either completes the session and cancels the
 other.
+
+Where neither is reachable and **the profile permits it**, the client MAY fall
+back to the offline tier of §10 — the payload passphrase-encrypted in the artifact,
+no relay. For `nostr-nsec`, which permits no offline tier, the fallback is instead
+the manual `ncryptsec` export of NKM §4.1.
 
 **The probe is advisory, not selective.** A three-second probe MUST NOT close out
 a ten-minute session: the client MUST show transfer UI, MUST keep re-attempting an
@@ -910,6 +941,11 @@ decrypt; and messages discarded by the session-window test of §11.4.
   never spoken before is not.
 - Availability comes from the interchangeability of operators, not from any one of
   them. This is deployment advice, not a conformance requirement.
+- **The offline tier (§10) forfeits every transport property**; its security is the
+  passphrase and the physical proximity of the two screens. It exists only for a
+  profile with no standalone encrypted export of its own (`frost-share`), and it
+  refuses a raw payload precisely because a bare secret pasted or shown persists
+  where a passphrase-sealed one does not.
 - A compromised device yields whatever that device holds.
 
 ## Appendix A — References
@@ -919,11 +955,12 @@ source of the commit-then-reveal construction of §6, by way of Matrix.
 
 ## Status
 
-Version 1.3-draft. 1.3 adds the `frost://` scheme and the light returned-secret
-flow of §12.3, for revocable, admission-gated payloads (the threshold share of NKM
-§7.18). Two things are still missing: the event kinds of §11.4 are unregistered
-placeholders and will change, and the test vectors are incomplete — the SAS of §6
-is covered in `vectors/`, but the one at the declared payload maximum that P1
-requires is not.
+Version 1.4-draft. 1.3 added the `frost://` scheme and the light returned-secret
+flow of §12.3; 1.4 restores the offline tier (§10) as a profile-gated,
+passphrase-encrypted fallback — `frost-share` permits it, `nostr-nsec` does not
+(it has `ncryptsec`). Two things are still missing: the event kinds of §11.4 are
+unregistered placeholders and will change, and the test vectors are incomplete —
+the SAS of §6 is covered in `vectors/`, but the one at the declared payload maximum
+that P1 requires is not.
 
 Implementation has begun. Review is more useful than deployment at this stage.

@@ -54,14 +54,16 @@ is running it over infrastructure nobody operates for the purpose.
 
 ## Status
 
-QR_SECRET_TRANSFER.md is version 1.3-draft, adding the `frost://` scheme and the
-light returned-secret flow (§12.3) for revocable shares. The event kinds are
-placeholders and may change, and the test vectors are incomplete: the §6 short code
-is covered in [vectors/](vectors/), the payload ceiling that P1 requires is not.
+QR_SECRET_TRANSFER.md is version 1.4-draft: the `frost://` scheme and light
+returned-secret flow (§12.3) for revocable shares, plus a profile-gated offline
+tier (§10) — passphrase-encrypted, no relay. The event kinds are placeholders and
+may change, and the test vectors are incomplete: the §6 short code is covered in
+[vectors/](vectors/), the payload ceiling that P1 requires is not.
 
-NOSTR_KEY_MANAGEMENT.md is version 9.1-draft, adding the serverless device-quorum
-threshold mode (§7.18) alongside the server co-signer. The `frost-share` profile
-(§3.3) carries either shard type and is delivered by a single Sender in both modes.
+NOSTR_KEY_MANAGEMENT.md is version 9.2-draft: the serverless device-quorum
+threshold mode (§7.18) alongside the server co-signer, and a passphrase-encrypted
+offline container for `frost-share` (§3.3), the one payload with no `ncryptsec` of
+its own.
 
 This project benefits from devs and users pressure testing the claims of the
 spec. Failure modes will be handled within reason to improve it. Structural

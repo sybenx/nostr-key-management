@@ -1003,9 +1003,12 @@ Transfer kinds are defined in QRST §11.4 and are not repeated here.
 | 24318 | ALERT | co-signer → trusted devices (§7.13) |
 | 24319 | EPOCH_FINALIZED | initiator → members (§7.4) |
 
-All placeholders. 24301–24304, 24307, 24310, 24312 and 24313 are unused — 24307
-(formerly `KEY_SHARE_PART`) was retired when share delivery became an ordinary QRST
-`frost-share` payload (§7.7).
+All provisional, in the ephemeral range (20000–29999) as befits gift-wrap rumors,
+and verified non-conflicting against the registry as of 2026-09-02 (QRST §11.4);
+`30242` (device list, epoch record) is addressable and keyed by its `d` tag.
+Unregistered pending a NIP, not throwaway. 24301–24304, 24307, 24310, 24312 and
+24313 are unused — 24307 (formerly `KEY_SHARE_PART`) was retired when share delivery
+became an ordinary QRST `frost-share` payload (§7.7).
 
 All are sealed and wrapped exactly as QRST §11.4 specifies, with one difference:
 **§7 wraps use `expiration = now + 30 days`**, not the ten-minute transfer TTL, so

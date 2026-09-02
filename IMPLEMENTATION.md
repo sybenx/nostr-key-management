@@ -229,11 +229,12 @@ values; and for NKM §7, a full activation, one refresh, and a joint issuance wi
 the parity case covered explicitly, since odd-y is where an independent
 implementation will first diverge.
 
-**Event kinds.** They stay unregistered until a NIP lands, so the mitigation is
-containment: one `KINDS` constant module, the `v=1` check already required at
-parse time, and a published `0.x` whose README says kinds will change and
-interoperability is not promised before 1.0. Nothing is tagged 1.0 until the
-kinds are real.
+**Event kinds.** They are provisional — chosen from the ephemeral range and
+verified non-conflicting, but unregistered until a NIP lands — so the mitigation is
+containment, not churn insurance: one `KINDS` constant module, the `v=1` check
+already required at parse time, and a published `0.x` whose README says the kinds
+are not NIP-reserved and interoperability is not promised before 1.0. Nothing is
+tagged 1.0 until a NIP reserves them.
 
 *(The third gap, the emoji table, closed by deletion rather than by code — the
 comparison it served was replaced by typed entry, so there is no table to

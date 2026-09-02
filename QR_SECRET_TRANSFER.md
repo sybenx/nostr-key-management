@@ -645,8 +645,13 @@ expired.
 { "kind": 24407, "content": "", "tags": [] }
 ```
 
-All kinds are unregistered placeholders and will change; they should be reserved
-in the kind registry before implementations ship.
+These kinds are **provisional, not arbitrary**. They sit in the ephemeral range
+(20000–29999), which suits gift-wrap rumors — relays never store them as such, and
+one leaked unwrapped is dropped rather than kept — and they were checked free of
+collision against the registered kinds as of 2026-09-02 (nearest neighbours: 24133
+NIP-46, 24242 NIP-B7). They are not yet reserved by a NIP; a NIP submission would
+formalise them, and they change only if that process asks or a later collision
+appears. Interoperability is not promised before that NIP.
 
 Reserved tag names: `commit`, `nonce`. Profiles MAY add tags to any message;
 implementations MUST ignore tags they do not recognise.
@@ -958,8 +963,9 @@ source of the commit-then-reveal construction of §6, by way of Matrix.
 Version 1.4-draft. 1.3 added the `frost://` scheme and the light returned-secret
 flow of §12.3; 1.4 restores the offline tier (§10) as a profile-gated,
 passphrase-encrypted fallback — `frost-share` permits it, `nostr-nsec` does not
-(it has `ncryptsec`). Two things are still missing: the event kinds of §11.4 are
-unregistered placeholders and will change, and the test vectors are incomplete —
+(it has `ncryptsec`). Two things are still open: the event kinds of §11.4 are
+provisional — chosen from the ephemeral range and verified non-conflicting
+(2026-09-02), but not yet reserved by a NIP — and the test vectors are incomplete:
 the SAS of §6 is covered in `vectors/`, but the one at the declared payload maximum
 that P1 requires is not.
 

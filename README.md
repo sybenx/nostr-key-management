@@ -56,8 +56,9 @@ is running it over infrastructure nobody operates for the purpose.
 
 QR_SECRET_TRANSFER.md is version 1.4-draft: the `frost://` scheme and light
 returned-secret flow (§12.3) for revocable shares, plus a profile-gated offline
-tier (§10) — passphrase-encrypted, no relay. The event kinds are placeholders and
-may change, and the test vectors are incomplete: the §6 short code is covered in
+tier (§10) — passphrase-encrypted, no relay. The event kinds are provisional —
+chosen from the ephemeral range and verified non-conflicting, but not yet reserved
+by a NIP — and the test vectors are incomplete: the §6 short code is covered in
 [vectors/](vectors/), the payload ceiling that P1 requires is not.
 
 NOSTR_KEY_MANAGEMENT.md is version 9.2-draft: the serverless device-quorum

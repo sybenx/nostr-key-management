@@ -63,57 +63,7 @@ filed here. They are known and tracked.
 
 ## Open
 
-### Threshold mode without a server is specified but unreachable
-
-**Document:** NOSTR_KEY_MANAGEMENT.md
-**Section:** §7.3 (touches §5, §7.4, §7.6)
-**Kind:** suspected error
-
-§5 now states that at `t = 2` any two shareholders reconstruct the key, and names
-enrolling no server as the only configuration in the design where there is no
-second party to collude with. §7.6 supports that: "With **zero servers enrolled**
-the condition is vacuously satisfied by design: trusted devices are then the
-normal co-signers for everyone."
-
-There is no way to get there. §7.3 is the only screen that enables threshold
-signing — "the client MUST NOT enable threshold signing by any path other than
-the user selecting A on this screen or in settings" — and it is titled *shown
-once per server enrollment*. Its option A reads "Your server sees what your other
-devices post," which describes a configuration the user choosing serverless
-threshold mode does not have.
-
-So the one configuration that answers the collusion property in §5 is described
-in §7.6, permitted by §7.4's index scheme, and reachable through no flow the
-specification writes. A user with two native apps and no server cannot select it,
-and an implementer following §7.3 literally will not build it.
-
-**Proposed fix:** §7.3 should be triggered by threshold enablement rather than by
-server enrollment, and should offer a third option, or a variant of A, whose copy
-covers the serverless case: the key is split across your own devices, they
-co-sign for each other, nothing is reachable when they are not, and no third
-party holds a share. §5's claim that this is the only in-design answer to
-collusion should link to it once it exists.
-
-### `t` is a constant, not a parameter
-
-**Document:** NOSTR_KEY_MANAGEMENT.md
-**Section:** §7.4 (touches §5)
-**Kind:** design disagreement
-
-§7.4 states `t = 2` flatly. Combined with §5, this means the specification offers
-no configuration in which two colluding shareholders is survivable — the only
-mitigation available is reducing the *number* of shareholders, not raising the
-threshold.
-
-For a user who believes they may be targeted individually, `t = 3` across three
-independent holders is the trade they would want: every signature needs three
-parties online, in exchange for surviving any two of them agreeing.
-
-**Proposed fix:** §7.4 should define `t` as a parameter with `2` as the default
-and `3` specified for deployments with three or more independent shareholders,
-and §7.3's mode screen should surface the choice only where the device list can
-satisfy it. The index scheme in §7.4 already accommodates this; what is missing
-is the parameter and the copy.
+None currently open.
 
 ## Resolved
 
@@ -126,10 +76,34 @@ available in its current role. The section it was filed against
 
 ### §5 did not state that at t = 2 any two shareholders are the key
 
-Resolved. `NOSTR_KEY_MANAGEMENT.md` §5 now states the collusion property as the
-first bullet of the threshold section: any two shareholders reconstruct, collusion
-is not a protocol event, and no audit or approval in §7 constrains it.
+Resolved, then superseded. In the 8.0 model `NOSTR_KEY_MANAGEMENT.md` §5 was
+updated to state that any two shareholders reconstruct. The 9.0 "replicas by index"
+rework then reversed that model entirely — under it two devices hold the *same*
+share and cannot reconstruct — so the property this entry tracked no longer holds;
+see the two entries below.
 
-The two other fixes proposed in the original entry were **not** made and are
-filed separately under Open — threshold mode without a server is unreachable, and
-`t` is still a constant.
+### Threshold mode without a server is unreachable — obsoleted by 9.0
+
+Filed against the 8.0 model, in which any two shareholders reconstruct and a
+serverless configuration was named as the only one with no second party to collude
+with. The 9.0 "replicas by index" rework removed that configuration. Under §7.4
+every device holds a replica of index 2, replicas of one index never combine, and
+§7.6 states plainly that only a server co-signs — "there is no device-to-device
+fallback." There is therefore no serverless-threshold mode to make reachable, and
+no two-shareholders-reconstruct property to answer: any number of devices is one
+share and yields nothing alone. Availability with nothing reachable is met by a
+self-hosted server (§7.2) or Offline mode (§7.14), and §7.3 being triggered by
+server enrollment is now correct, since threshold signing requires a co-signer. The
+§5 and §7.6 text this entry quoted no longer exists.
+
+### `t` is a constant, not a parameter — obsoleted by 9.0
+
+The entry wanted `t = 3` so that two colluding shareholders would be survivable.
+The 9.0 "replicas by index" rework makes that survivability structural rather than a
+function of the threshold. The only two share-classes are the server (index 1) and
+the devices (index 2); any number of devices is one share, and two devices cannot
+combine (§5, §7.6). Colluding devices therefore yield nothing, and the single
+meaningful signing pair is server + device. `t = 2` is intrinsic to the two-index
+design; a third independent index would be a different architecture, not a parameter
+of this one. The concern the entry raised is answered by the redesign, not by
+raising `t`.

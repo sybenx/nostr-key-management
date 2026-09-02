@@ -16,9 +16,10 @@ There are three products stacked here with very different adoption stories.
 Saying so up front is what keeps the library's README from over-promising.
 
 **QRST is a genuine drop-in, and is the whole product for most adopters.** The
-burner handshake, the QR, the typed code, gift-wrapped transfer over relays, the
-offline fallback. Self-contained client code with no infrastructure behind it and
-nothing for an operator to run. This ships first and is marketed as the product.
+burner handshake, the QR (an `https` fragment link, no custom scheme), the typed
+code, gift-wrapped transfer over relays. Self-contained client code with no
+infrastructure behind it and nothing for an operator to run. This ships first and
+is marketed as the product.
 
 **Storage and backup (NKM §2, NKM §4) are a drop-in too**, and belong in the same
 package — the storage ladder is what a key does *after* it arrives, and shipping
@@ -106,7 +107,7 @@ integrator what the role system is for.
 const session = createTransferSession({
   role: 'receiver', mode: 'offer', profile: 'nostr-nsec', …adapters
 })
-session.qrUri                          // QRST §11.2, and the https form of QRST §11.2a
+session.qrUri                          // the https fragment link of QRST §11.2
 session.on('code', digits => …)        // display; the peer types it
 session.on('verified', () => …)
 ```
@@ -129,7 +130,7 @@ exactly one thing to reimplement and exactly one suite to prove it against.**
 
 | Package | Contains | Depends on |
 |---|---|---|
-| `@qrst/core` | Every derivation and state machine, as pure functions over injected randomness and clock. Commit/nonce/reveal and code derivation (QRST §6), URI parse and build (QRST §11.2, §11.2a), message construction and validation (QRST §11.4), Flow A/B state machines (QRST §7, §8), profile registry (QRST §5), blob-store key schedule (NKM §4.2), FROST wrappers, refresh algebra (NKM §7.9), epoch ordering. No I/O, no DOM, no `fetch`, no timers. | `@noble/curves`, `@noble/hashes`, `@scure/base` |
+| `@qrst/core` | Every derivation and state machine, as pure functions over injected randomness and clock. Commit/nonce/reveal and code derivation (QRST §6), URI parse and build (QRST §11.2), message construction and validation (QRST §11.4), Flow A/B state machines (QRST §7, §8), profile registry (QRST §5), blob-store key schedule (NKM §4.2), FROST wrappers, refresh algebra (NKM §7.9), epoch ordering. No I/O, no DOM, no `fetch`, no timers. | `@noble/curves`, `@noble/hashes`, `@scure/base` |
 | `@qrst/web` | The adapters that make `core` run in a browser: storage per NKM §2.3, relay transport with the outbox of QRST §11.5, WebAuthn gate, `navigator.storage.persist()`, camera and fragment parsing. Exports `NostrKeys`. | `core` |
 | `@qrst/ui` | The screens the specs write copy for: QR with the direction line of QRST §11.2b, the code entry field with its visible length, the release prompt of QRST §9 with the origin as punycode, the lock indicator (NKM §7.16). Framework-free custom elements. | `web` |
 | `qrst-login` | Tier 0. One IIFE bundle, no build step for the adopter, sets `window.nostr`. | `ui` |
@@ -247,8 +248,9 @@ count is one.
 
 **v0.1 — the actual drop-in.** NKM §2 storage ladder with silent probing and
 in-place upgrade; QRST Flow A and B over relays; the typed code and its attempt
-budget; the multiple-responder notice; the offline fallback; NKM §4.1 `ncryptsec`
-export; NIP-07 signer; tier 0 bundle. No server, no account, nothing to run.
+budget; the multiple-responder notice; NKM §4.1 `ncryptsec` export (which also
+covers moving a key with no network — QRST defines no in-ceremony offline path);
+NIP-07 signer; tier 0 bundle. No server, no account, nothing to run.
 Ships the first vector files.
 
 **v0.2 — backup.** NKM §4.2 blob store, `@qrst/server` on a Worker, NKM §7.10
@@ -261,11 +263,11 @@ surfaced. Still no threshold; this is the bookkeeping NKM §7 needs and it has
 standalone value as a "where am I logged in" screen.
 
 **v0.4 — threshold.** NKM §7.4–NKM §7.15. The largest step by a wide margin, and
-the one that should not start until v0.1–v0.3 have been used by somebody.
-**Blocked on a spec question:** the `frost-share` profile is marked
-do-not-implement, because share issuance delivers two partials from two different
-parties and QRST describes one Sender. That needs settling before any of v0.4 is
-worth writing.
+the one that should not start until v0.1–v0.3 have been used by somebody. The spec
+question that once blocked it is settled: under 9.0's replica-by-index scheme every
+device holds the same share, so `frost-share` issuance is one Sender, one Receiver,
+one payload (NKM §3.3), and no carve-out to QRST is required. The camera-less case
+uses copy-paste pairing (QRST §12.1) over relays.
 
 **1.0 — when the kinds are registered.**
 
@@ -313,8 +315,9 @@ autofill, and no pre-fill. Every one of those reads as a styling detail an
 integrator would override without noticing. Ship it as a component that cannot be
 replaced, only themed.
 
-**The bounce page is infrastructure that must stay static.** QRST §11.2a puts the
-URI in the fragment specifically so it never reaches a server. A landing page that
+**The bounce page is infrastructure that must stay static.** QRST §11.2 puts every
+parameter in the fragment specifically so it never reaches a server, and §11.2a
+makes the bounce page the generic-camera fallback. A landing page that
 does anything server-side — analytics, a redirect, server-rendered anything —
 risks reintroducing the operator the whole design avoids. It should be a static
 file with a CI check that it makes no network calls.
@@ -327,9 +330,8 @@ chunk, enforced in CI, or the first bug report is "this doubled my bundle."
 
 ## 9. Decisions needed before scaffolding
 
-1. **npm scope.** `@qrst/*` matches the `qrst://` scheme and is proposed
-   throughout; availability is unverified. `@sybenx/*` is the fallback and needs
-   no check.
+1. **npm scope.** `@qrst/*` matches the QRST name and is proposed throughout;
+   availability is unverified. `@sybenx/*` is the fallback and needs no check.
 2. **Rust in the build**, for the FROST WASM path. Reasonable to defer to v0.4,
    but it shapes the `core` API now: FROST calls should sit behind an async
    interface from the first commit so the backend can change without a breaking

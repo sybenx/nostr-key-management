@@ -1,6 +1,6 @@
 # QR Secret Transfer — Specification
 
-Version 1.1-draft
+Version 1.2-draft
 Applies to: any two devices moving a secret between them under user supervision
 
 Key words MUST, MUST NOT, SHOULD, MAY are normative.
@@ -20,8 +20,7 @@ devices are capable of performing.
 ## 1. Overview
 
 The QR carries an address at which the showing device can be reached, plus
-transport hints. It never carries the secret, except in the offline fallback of
-§10, which has its own encryption.
+transport hints. It never carries the secret.
 
 1. One device generates a burner keypair and shows its public half as a QR.
 2. The other scans it and generates its own burner keypair.
@@ -31,7 +30,7 @@ transport hints. It never carries the secret, except in the offline fallback of
 5. Only after the code is verified does the secret travel, encrypted end to end.
 6. Both burner keypairs are destroyed.
 
-§§3–10 state what the mechanism needs without assuming how it is provided. §11
+§§3–9 state what the mechanism needs without assuming how it is provided. §11
 is the Nostr binding and is the only binding defined here.
 
 ## 2. Definitions
@@ -99,23 +98,7 @@ A conformance test vector MUST exist at exactly the declared maximum.
 ### P2 — Single-shot
 
 One payload, one session. Chunking, fragmentation and resumption MUST NOT be
-attempted.
-
-**Companion messages.** A profile MAY define additional, semantically distinct
-messages in the same session, subject to all of:
-
-- At most **three** per session, each individually within P1.
-- Sent alongside the payload, not after it. The Sender emits them in the same
-  session without waiting; the Receiver holds them under P6 keyed by the sending
-  burner and commits them only together with the payload they arrived beside.
-  Companions from a burner whose payload is never committed are discarded with
-  it.
-- Covered by the same release consent. §9's prompt MUST name the companions.
-- Not required for completion. A Receiver that never gets them MUST still hold a
-  usable payload, MUST NOT make the user's ability to confirm contingent on
-  their arrival, and MUST commit the payload whether or not any arrived. It MAY
-  wait a bounded, short interval after confirmation for companions still in
-  flight, provided expiry commits the payload regardless.
+attempted, and a session carries exactly one message with meaning to the profile.
 
 ### P3 — Opaque to the carrier
 
@@ -140,11 +123,10 @@ A Receiver may hold several candidate payloads simultaneously (§13) and commits
 at most one. A payload MUST tolerate being received, held, and wiped without side
 effects. Implementations MUST bound the number held (§9, §13).
 
-### P7 — Confidentiality from the transport, except offline
+### P7 — Confidentiality from the transport
 
-A payload need not encrypt itself; T3 covers it. The exception is the offline
-fallback (§10), which has no transport. A profile that permits offline transfer
-MUST define its own passphrase-based encryption for that case.
+A payload need not encrypt itself; T3 covers it on the wire. A profile MAY still
+encrypt its payload for reasons of its own, but the mechanism does not require it.
 
 ## 5. Profiles
 
@@ -156,16 +138,11 @@ A profile defines one kind of payload. It is identified by a string matching
 3. The check satisfying P4.
 4. The rendering satisfying P5.
 5. Its confirmation copy for §9 — what the Sender's prompt says is being sent.
-6. Whether the offline fallback (§10) is permitted, and if so the encryption
-   satisfying P7.
-7. Any additional message tags, which MUST NOT collide with the reserved names
+6. Any additional message tags, which MUST NOT collide with the reserved names
    in §11.4.
-8. Any companion messages (P2): what each carries, the value of its `companion`
-   tag (§11.4), and the wording by which §9's release prompt names them.
 
-A profile MAY restrict which parties are permitted to act as Sender, and MAY
-disallow the offline fallback entirely. Implementations MUST ignore tags they do
-not recognise.
+A profile MAY restrict which parties are permitted to act as Sender.
+Implementations MUST ignore tags they do not recognise.
 
 Profiles are defined outside this document. `nostr-nsec` and `frost-share` are
 defined in the Nostr key storage specification.
@@ -175,8 +152,7 @@ defined in the Nostr key storage specification.
 > **Profile `example-token`.** Payload: a bearer token, UTF-8, base64. Default
 > size. P4 check: decodes as valid base64 and parses as a JWT with a recognised
 > issuer. P5 rendering: "a token for *example.com*, issued 14 March, expiring 21
-> March." Sender prompt: "Send your example.com token to …". Offline fallback:
-> not permitted.
+> March." Sender prompt: "Send your example.com token to …".
 
 ## 6. Session and short authentication string
 
@@ -185,20 +161,27 @@ code derives from both burners and both nonces.
 
 ```
 contacting party:  nonce_C ← random 32 B
-                   commit  = SHA-256("qrst-commit-v1" || C.pub || nonce_C)
+                   commit  = SHA-256("qrst-commit" || v || C.pub || nonce_C)
                    sends { C.pub, commit }
 other party:       nonce_O ← random 32 B;  sends { nonce_O }
 contacting party:  sends { nonce_C }
-both:              verify SHA-256("qrst-commit-v1" || C.pub || nonce_C) == commit
-                   code    = SHA-256("qrst-sas-v1" || len(p) || p
+both:              verify SHA-256("qrst-commit" || v || C.pub || nonce_C) == commit
+                   code    = SHA-256("qrst-sas" || v || len(p) || p
                                      || SND.pub || RCV.pub || nonce_S || nonce_R)
                    digits  = (code[0..5] as u40 BE) mod 100_000, zero-padded to 5
 ```
 
-`SND.pub` and `RCV.pub` are the 32-byte burner public keys in role order,
-regardless of flow. In Flow A the contacting party `C` is the Sender, so
-`nonce_C = nonce_S`; in Flow B it is the Receiver. `p` is the profile identifier
-from the QR (§11.2) as ASCII, preceded by its length as a single byte.
+`v` is the protocol version from the QR (§11.2) as a single byte — `0x01` for
+`v=1` — hashed as a field rather than baked into the label, so that a future
+version changes the transcript mechanically and no two implementations can
+disagree on a domain-separator suffix. `SND.pub` and `RCV.pub` are the 32-byte
+burner public keys in role order, regardless of flow. In Flow A the contacting
+party `C` is the Sender, so `nonce_C = nonce_S`; in Flow B it is the Receiver.
+`p` is the profile identifier from the QR (§11.2) as ASCII, preceded by its
+length as a single byte.
+
+The reduction `mod 100_000` over 40 bits carries a bias below 3×10⁻⁶, far under
+the 10⁻⁵ per-session guess probability the code targets; it is not corrected.
 
 The transcript binds the protocol version, the profile, both burners, the role
 each holds, and both nonces. It does **not** bind the relay set or the chosen
@@ -249,24 +232,23 @@ Receiver                                    Sender
                                            11. derive SAS; show the consent
                                                prompt of §9
 12. receive REVEAL; verify commit; derive
-    SAS for this SND; DISPLAY the code
-    (all candidates, at most 3, newest
-    first): "Type this on your other
-    device"
+    SAS for this SND; DISPLAY the active
+    candidate's code, advancing to the
+    next held on no-match (§13): "Type
+    this on your other device"
                                            13. user obtains a code from the
                                                Receiver's screen (§9); match → 14
                                                declines or 5 failures → abort,
                                                zeroize SND
                                            14. send PAYLOAD → RCV.pub
-15. receive payload and any companions;
-    verify attribution; hold keyed by
-    sending burner. MUST NOT commit
-16. if more than one payload is held, user
-    selects by code; applies the P4 check;
-    renders per P5 ("Log in as @name?");
-    asks to confirm
-17. confirmed → commit payload and the
-    companions held beside it; send ACK
+15. receive payload; verify attribution;
+    hold keyed by sending burner.
+    MUST NOT commit
+16. take the candidate whose code the
+    Sender confirmed (§13); apply the P4
+    check; render per P5 ("Log in as
+    @name?"); ask to confirm
+17. confirmed → commit payload; send ACK
     → SND.pub; zeroize RCV and every other
     held payload
     declined → discard all, abort
@@ -307,10 +289,9 @@ Sender                                      Receiver
      next pending request, if any, or keep
      waiting; abort only at 10 min)
 14. send PAYLOAD → RCV.pub
-                                           15. receive payload and any companions;
-                                               verify attribution and that the
-                                               sending burner is the SND.pub from
-                                               the QR, else discard
+                                           15. receive payload; verify attribution
+                                               and that the sending burner is the
+                                               SND.pub from the QR, else discard
                                            16. apply P4 check; render per P5;
                                                ask to confirm
                                            17. confirmed → commit; send ACK
@@ -320,10 +301,11 @@ Sender                                      Receiver
 
 Requests are queued by distinct Receiver burner in arrival order, capped at
 **five pending per session**; further distinct requests are dropped with the §13
-notice. Each queued request runs its own nonce exchange, and at most **three**
-are presented for approval at a time, newest first — the same display cap as
-Flow A, and the reason §9's attempt budget exceeds it. Declining advances to the
-next or returns to waiting; the session ends on approval or at ten minutes.
+notice. Each queued request runs its own nonce exchange. The Sender works one
+candidate at a time (§13): it verifies the code from the intended Receiver's
+screen, and a value matching no held candidate advances to the next. Declining or
+a no-match advances to the next pending request or returns to waiting; the session
+ends on approval or at ten minutes.
 
 In Flow B the Receiver has no independent screen to compare against before it
 sends its request: the SAS is shown to it at step 11 and to the Sender at step
@@ -339,10 +321,10 @@ defaulted, remembered, or suppressed.
 
 Before any payload is sent, the Sender MUST present a prompt that:
 
-1. Names what is being sent, in the profile's words (§5, item 5), and any
-   companions (§4, P2). It MUST state that the secret itself leaves this device —
-   not a session, not a revocable permission. Where the profile's secret cannot
-   be revoked once released, the prompt MUST say so.
+1. Names what is being sent, in the profile's words (§5, item 5). It MUST state
+   that the secret itself leaves this device — not a session, not a revocable
+   permission. Where the profile's secret cannot be revoked once released, the
+   prompt MUST say so.
 2. Names what the other party claims to be: for a browser, its origin; otherwise
    that it is a native application. These are unverified claims. Origins
    containing non-ASCII MUST be shown as punycode.
@@ -360,13 +342,25 @@ default keyboard action. Where the controls carry text, the affirmative one MUST
 describe the transfer rather than express agreement: "Send my key to that device"
 rather than "OK" or "Continue".
 
-**Friction is graduated by what the other party claims to be:**
+**Friction is graduated, and it fails closed.** The tier is set by what the other
+party is *established* to be, and the default is the maximum:
 
-- **A web origin.** Maximum friction. The prompt SHOULD require an additional
-  deliberate act beyond a single tap, and MUST name the origin in the affirmative
-  control itself.
-- **A native application.** Standard friction. Deliberate and unambiguous, but
-  not alarming.
+- **Maximum friction** applies whenever the other party claims a web origin, **and
+  whenever its nature is unestablished** — a pairing obtained by paste, or by any
+  means other than this device's own camera reading the code (§11.2a), or with no
+  positive native claim. An unlabelled peer gets web-tier friction, never the
+  benefit of the doubt. The prompt SHOULD require an additional deliberate act
+  beyond a single tap, and where an origin is claimed MUST name it in the
+  affirmative control itself.
+- **Standard friction** applies only when the peer positively presents as a native
+  application *and* the pairing was read by this device's own camera — the one
+  channel that proves the code was physically in front of the user. Deliberate and
+  unambiguous, but not alarming.
+
+This closes the gap where a party that never shows a QR — a web client that reaches
+the Sender by a pasted request rather than a scanned code — would otherwise be
+handled as native merely because it declared no origin. Its nature is
+unestablished, so it gets the maximum.
 
 **Authorisation is scoped to one session and MUST NOT outlive it.** Consent, and
 any platform credential or biometric check a profile requires alongside it (§5),
@@ -377,8 +371,15 @@ which further transfers proceed unchallenged.
 ### 9.2 Obtaining the code
 
 **The Sender MUST obtain the Receiver's code from the Receiver's display and
-verify it locally.** Two conforming methods; an implementation MAY offer either
-or both:
+verify it locally — regardless of which party showed the QR.** The direction is
+invariant: the Receiver displays, the Sender reads and compares. It is never the
+Receiver that types a code the Sender shows. The Sender is the party performing the
+irreversible release, so the Sender is the party that must actively prove it read
+the other screen; a code entered on the Sender and matched against the Sender's own
+computed value is that proof. Both flows (§7, §8) display on the Receiver and enter
+on the Sender for this reason.
+
+Two conforming methods; an implementation MAY offer either or both:
 
 - **Entry.** The user reads the digits and types them.
 - **Capture.** The user points this device's camera at the Receiver's display and
@@ -396,12 +397,15 @@ is complementary and never a substitute.
   clipboard.
 - Where capture is used, a captured code that does not match counts as an
   attempt.
-- Where the Receiver holds more than one candidate (§13) it displays each
-  candidate's digits, at most three. The Sender's user types codes from that
-  screen until one is accepted or the budget is spent.
-- At most **five** attempts per session — more than the three candidates that can
-  be displayed. On the fifth failure the Sender abandons the session and zeroizes
-  its burner.
+- Where the Receiver holds more than one candidate (§13) it shows **one
+  candidate's code at a time**, the first responder first; a value the Sender
+  obtains that matches none of its held candidates advances the display to the next
+  held candidate. It is never all codes at once.
+- The budget disambiguates candidates; it does not grant guesses. Each held
+  candidate has a single fixed code that a party in the middle cannot influence, so
+  trying the next candidate is not a second attempt at the same code.
+- At most **five** attempts per session, across at most three held candidates. On
+  the fifth failure the Sender abandons the session and zeroizes its burner.
 
 **The code is never transmitted, and the comparison is never delegated.**
 
@@ -439,32 +443,27 @@ from a new session (§6).
 
 ### 9.4 Acceptance confirmation, on the Receiver
 
-Before a payload is committed, the Receiver MUST require the user to select the
-SAS matching the Sender's screen from the candidates it holds, MUST then show the
-P5 rendering, and MUST require confirmation.
+Before a payload is committed, the Receiver MUST commit only the candidate whose
+SAS the Sender confirmed (§13) — the one the Sender read from this Receiver's
+screen and matched locally — MUST then show the P5 rendering, and MUST require
+confirmation.
 
 This side MUST NOT be presented as alarming. The confirmation is nonetheless
 mandatory: it is what prevents a party who photographed the QR from racing the
 real Sender and planting their own payload.
 
-## 10. Offline fallback
+## 10. No in-ceremony offline path
 
-Available only when no transport is reachable, the user confirms they are
-offline, and the profile permits it (§5). The payload travels inside the QR
-itself, so every property of §3 is forfeited and the payload's own encryption is
-all that remains (P7). There is no SAS in this flow.
+Earlier drafts carried an offline fallback here: the payload inside the QR,
+passphrase-encrypted, with no transport and no SAS. It is removed. It duplicated a
+path that already exists — a `nostr-nsec` payload is a private scalar, and NIP-49
+`ncryptsec` is exactly its passphrase-encrypted form, which the storage
+specification already exports and imports (NKM §4.1) — while forfeiting every
+property of §3 and offering nothing the SAS provides.
 
-1. The Sender prompts for a passphrase, with the line **"Anyone who photographs
-   this code can try passwords against it forever; this passphrase is the only
-   protection."**
-2. The Sender displays the profile's passphrase-encrypted encoding of the payload
-   as a QR. The screen sets the platform screenshot-block flag and auto-dismisses
-   after 60 seconds. Where no reliable flag exists — X11 has none, Wayland is
-   compositor-dependent — the Sender MUST display an explicit warning that
-   screenshots cannot be blocked, and MAY then proceed.
-3. The Receiver scans, prompts for the same passphrase, decrypts, applies the P4
-   check, renders per P5, and asks to confirm before committing.
-4. The Sender records a transfer event with the offline flag set (§14).
+There is therefore no SAS-free transfer in this specification. A user with no
+network and two co-present screens SHOULD move the key by the profile's own
+encrypted export rather than through this mechanism.
 
 ## 11. Transport binding: Nostr
 
@@ -490,8 +489,13 @@ NIP-59's `created_at` randomisation maps to no row above and is **not** used; se
 
 ### 11.2 QR URI
 
+The pairing address is a single `https` link. Every parameter lives in the URL
+**fragment**, so that neither the burner key nor the relay list reaches the host's
+server or its logs. There is no custom URI scheme: "qrst" is the name of the
+mechanism, not a `scheme://`, and MAY appear in `<path>`.
+
 ```
-qrst://<npub>?v=1&mode=<offer|request>&p=<profile-id>[&relay=<wss url>]*[&local=<ws url>][&origin=<host>]
+https://<host>/<path>#v=1&mode=<offer|request>&p=<profile-id>&npub=<npub>[&relay=<wss url>]*[&origin=<claimed-origin>]
 ```
 
 - `npub` — bech32 burner public key of the device showing the QR.
@@ -501,10 +505,9 @@ qrst://<npub>?v=1&mode=<offer|request>&p=<profile-id>[&relay=<wss url>]*[&local=
   optional field would need a canonical encoding for its absence and two
   implementations would choose differently.
 - `relay` — 1–4 relay URLs the showing device is subscribed to.
-- `local` — optional LAN endpoint, e.g. `ws://192.168.1.23:53317`.
 - `origin` — REQUIRED if and only if the showing device is a web client, and
-  omitted otherwise. Its presence is what selects the web tier of §9's graduated
-  friction. It is an unverified claim.
+  omitted otherwise. It is an unverified claim, and its absence does not buy
+  leniency: §9's friction fails closed, so an unstated nature draws the web tier.
 
 A client MUST reject URIs with unknown `v`, missing `mode`, or missing `p`, and
 MUST abort before generating a burner if it does not implement the declared
@@ -516,27 +519,29 @@ later. A client that has not yet committed adopts the complementary role.
 
 Profiles MAY register additional `mode` values.
 
-### 11.2a Carrying the URI in an `https` link
+### 11.2a The bounce page
 
-A QR SHOULD encode the URI as an `https` link with the complete `qrst://` URI in
-the **fragment**, so that neither the burner key nor the relay list reaches the
-origin's server or its logs:
+The primary path never visits `<host>`: a client whose **own camera** reads the
+code extracts the parameters from the fragment and pairs directly, making no HTTP
+request. `<host>` matters only when a *generic* camera — the platform camera app —
+scans the code and opens a browser.
 
-```
-https://<origin>/<path>#qrst://<npub>?v=1&mode=…&p=…
-```
+Using `https` rather than a custom scheme costs nothing in reach. An app that has
+claimed `<host>` through the platform's standard association — iOS Universal Links,
+Android App Links — opens directly from the link on both platforms, the same
+one-tap open a `scheme://` would give, but bound to a domain the app proved it owns
+rather than a global string any app can register. The app already serving the
+bounce page hosts that association file; nothing extra is stood up for it.
 
-- A client whose own camera reads the code MUST extract the URI from the fragment
-  and MUST NOT make the request.
-- The `origin` SHOULD be the one already serving the client that drew the code.
-- The landing page SHOULD be a bounce page: it reads its own fragment, offers the
-  `qrst://` deep link, offers the URI as copyable text, and acts as a party itself
-  only if the visitor chooses that origin's own client. Because the fragment never
-  reaches the server, such a page can be entirely static.
-- `qrst://` remains valid and is the RECOMMENDED form for deep links and copied
-  text (§12.1).
-- The additional friction §12.1 requires for a pasted URI applies identically to a
-  scanned `https` code that was not read by the client's own camera.
+- The landing page SHOULD be a **bounce page**: it reads its own fragment, opens
+  the associated app where App/Universal Links are set up, and otherwise offers the
+  parameters as copyable text — acting as a party itself only if the visitor
+  chooses that host's own client. Because the fragment never reaches the server,
+  the page can be entirely static, and the host it runs on learns nothing.
+- A showing device with no host of its own still pairs by the peer's own camera;
+  the `<host>` it names serves only the generic-camera fallback.
+- The extra friction §12.1 requires for a pasted URI applies identically to an
+  `https` code that reached the client by any route other than its own camera.
 
 ### 11.2b Presenting the code
 
@@ -564,24 +569,18 @@ rendered on or beside the code.
 
 ### 11.3 Transport selection
 
-Before showing transfer UI, the client probes in parallel, timeout 3 s:
+Relays are the transport. Before showing transfer UI the client probes relay
+reachability — a WebSocket open and `REQ` accepted on at least one configured
+relay — with a 3 s timeout. An implementation MAY additionally offer the optional
+local path of §11.7; where it does, it probes that concurrently and the first
+payload successfully received on either completes the session and cancels the
+other.
 
-1. Relay reachability — WebSocket open and `REQ` accepted on at least one
-   configured relay.
-2. Local network reachability — mDNS browse for `_qrst._tcp`, or a `local=`
-   endpoint from a scanned QR.
-
-The transfer uses relays if reachable, else the local network, else §10. Both
-paths MAY be attempted concurrently; the first payload successfully received
-completes the session and the other is cancelled.
-
-**For a client with only one transport available in its current role, the probe
-is advisory rather than selective:** the client MUST show transfer UI, MUST
-re-attempt the unreachable transport for the remaining lifetime of the session,
-MUST proceed as soon as a transport becomes available, and MUST report failure
-only once the session has expired. A three-second probe MUST NOT close out a
-ten-minute session. Browsers have no mDNS and cannot open `ws://` to private
-addresses from `https://`, so a browser has relays or §10 and nothing else.
+**The probe is advisory, not selective.** A three-second probe MUST NOT close out
+a ten-minute session: the client MUST show transfer UI, MUST keep re-attempting an
+unreachable relay for the remaining lifetime of the session, MUST proceed as soon
+as a relay becomes reachable, and MUST report failure only once the session has
+expired.
 
 ### 11.4 Messages
 
@@ -606,25 +605,17 @@ addresses from `https://`, so a browser has relays or §10 and nothing else.
 
 // ABORT — either party → peer, this session is over (§9.3)
 { "kind": 24407, "content": "", "tags": [] }
-
-// COMPANION — Sender → Receiver, emitted alongside the payload (§4)
-{ "kind": 24408, "content": "<profile-defined>", "tags": [["companion","<profile-defined name>"]] }
 ```
 
 All kinds are unregistered placeholders and will change; they should be reserved
 in the kind registry before implementations ship.
 
-Reserved tag names: `commit`, `nonce`, `companion`. Profiles MAY add tags to any
-message; implementations MUST ignore tags they do not recognise.
+Reserved tag names: `commit`, `nonce`. Profiles MAY add tags to any message;
+implementations MUST ignore tags they do not recognise.
 
-The session's protocol version is fixed by the QR's `v` (§11.2) and bound into the
-SAS domain separators (§6). Messages carry no version tag.
-
-**Companions share one kind.** Every companion a profile defines uses kind 24408
-and is distinguished by its `companion` tag, whose values the profile assigns (§5,
-item 8). A Receiver MUST ignore a companion whose name it does not recognise and
-MUST NOT treat it as an error. The three-per-session cap of §4 counts every kind
-24408 rumor in the session, recognised or not.
+The session's protocol version is fixed by the QR's `v` (§11.2) and hashed as a
+field into the commit and the SAS (§6). Messages carry no version tag. One session
+carries one PAYLOAD; there is no side-channel for additional profile messages (P2).
 
 These are unsigned rumors. **Every one of them** is sealed — kind 13, signed by
 the sending burner, NIP-44 to the recipient burner — and gift-wrapped — kind 1059,
@@ -648,6 +639,11 @@ second timestamp to reason about.
   lifetime with a tolerance of **`SLACK = 120` seconds** at each end. `SLACK` is
   normative: if one client accepts what another rejects, honest pairings fail
   between them.
+- The window is enforced against absolute timestamps with no shared time origin,
+  so clients MUST keep their wall clock within `SLACK` of true time — by NTP or
+  the platform's network time. A client that cannot MUST warn that transfers may
+  fail, and MUST NOT widen `SLACK` locally to compensate: a wider window is a
+  larger cross-session grinding surface for the SAS (§6).
 - A rumor whose timestamp falls outside that widened window MUST be **discarded
   from the session entirely** — never shown, never given a nonce exchange, never
   in the SAS candidate list, and not merely excluded from the §13 counter.
@@ -701,16 +697,18 @@ unmeasured.
 Clients MUST read `max_message_length` and `max_content_length` from NIP-11 during
 the §11.3 probe and skip relays that cannot carry the declared profile's maximum.
 
-### 11.7 Local network path
+### 11.7 Local network path (optional, non-normative)
 
-- The listening party opens a WebSocket on a random port ≥ 49152 and advertises
-  `_qrst._tcp` with TXT `npub=<burner npub>`.
-- The other party connects and sends the wrap as a single text frame containing
-  the kind 1059 event JSON.
-- Same messages, seal, wrap, SAS, and cleanup as the relay path. The LAN is
-  untrusted; the wrap already assumes that.
+Relays are the transport (§11.3). An implementation MAY additionally offer a local
+path for two devices on the same network, but it is not part of the conformance
+surface and no client is required to implement or interoperate on it.
 
-Browsers cannot use this path in either role.
+Where offered: the listening party opens a WebSocket on a random port ≥ 49152 and
+advertises `_qrst._tcp` with TXT `npub=<burner npub>`; the other connects and sends
+the wrap as a single text frame containing the kind 1059 event JSON. Everything
+else — messages, seal, wrap, SAS, cleanup — is exactly the relay path, and the LAN
+is untrusted in the same way the wrap already assumes. Browsers cannot use this
+path in either role.
 
 ## 12. Pairing without a camera
 
@@ -721,19 +719,31 @@ burners, SAS, messages, consent and cleanup are unchanged. The URI is not secret
 
 ### 12.1 Copying the URI
 
-The showing party offers its URI as selectable text; the other party pastes it.
+The showing party offers its `https` URI (§11.2) as selectable text; the other
+party pastes it.
 
-- **Clients MUST accept either form:** a bare `qrst://` URI, or an `https` link
-  per §11.2a from which the URI is read out of the fragment.
-- **Clients SHOULD offer `qrst://` for copying.** It is shorter and does not
-  present as something to tap.
 - The URI MUST be validated before use; the bech32 checksum on the burner key
   catches transcription errors.
+- A pasted URI never counts as read by the client's own camera, so its nature is
+  unestablished and §9's friction fails closed to the web tier (§9.1).
 - **Additional friction for URIs that make the local device the Sender.** Where a
   URI would make the local device the Sender (`mode=offer`) and did not come from
   the device's own camera, the client MUST present the release consent of §9 with
   an explicit statement that the request did not originate from a scan, and MUST
   NOT allow that consent to be remembered or defaulted.
+
+For the `nostr-nsec` profile, moving a key between two devices that can pass text
+does not need this path at all: `ncryptsec` export (NKM §4.1) already does it.
+Copy-paste pairing earns its place for a profile whose payload has no such
+standalone encrypted form — a threshold share (NKM §7.7) — where the SAS ceremony
+is the delivery.
+
+**Two camera-less devices** pair this way and nothing else changes: one shows or
+copies its `https` URI as text, the other pastes it, and the SAS, gift-wrap and
+release ceremony then run over relays exactly as after a scan. Neither device needs
+a camera, a shared local network, or a direct link between them — only a relay each
+can reach. This is the sole delivery for a threshold share between two camera-less
+devices, since `frost-share` has no `ncryptsec`-style export to fall back on.
 
 Sending the URI through a third party is permitted; it leaks the metadata that a
 pairing happened and which relays are involved, which is a further reason the URI
@@ -754,18 +764,35 @@ channels will not pair.
 
 ## 13. Multiple responders
 
-If, within one session, the receiving side sees messages from **two or more
-distinct burner public keys** — two HELLOs in Flow A, two REQUESTs in Flow B — the
-client shows a soft, non-blocking notice on the device that displayed the QR:
+The receiving side treats the **first responder** — the first distinct burner to
+send a HELLO (Flow A) or REQUEST (Flow B) — as the active candidate, and runs the
+nonce exchange and SAS with it.
 
-> Another device also responded to this code. If that wasn't you, someone nearby
-> may have scanned it. Nothing was shared with them.
+If, within the same session, a message arrives from a **second or later distinct
+burner public key**, the client:
 
-The session continues normally. The SAS comparison decides which responder is
-real; the notice is recorded in the transfer event (§14) with the
-multiple-responder flag set.
+- holds it as a fallback candidate, at most three held per session;
+- shows a soft, non-blocking notice on the device that displayed the QR:
 
-The following MUST NOT count as a second responder: the same message delivered by
+  > Another device also responded to this code. If that wasn't you, someone nearby
+  > may have scanned it. Nothing was shared with them.
+
+- records the multiple-responder flag in the transfer event (§14).
+
+**A later responder MUST NOT abort the session.** Seeing the QR is not evidence of
+an attack, and aborting would let anyone who photographed the code deny every
+transfer with a single forged message. The session continues, with the first
+responder active and the others held.
+
+**The SAS decides which candidate is real, and the display is lazy.** The Sender
+verifies the code from the Receiver's screen (§9.2); the Receiver commits only the
+candidate whose SAS the Sender confirmed (§9.4). The active candidate's code is
+shown alone; where it does not verify, the client advances to the next held
+candidate rather than presenting them together. A candidate that fails its P4 check
+(§4) at acceptance is discarded and the client advances to the next held candidate,
+or aborts if none remain.
+
+The following MUST NOT count as a distinct responder: the same message delivered by
 more than one route; retransmissions from the same burner; a message that fails to
 decrypt; and messages discarded by the session-window test of §11.4.
 
@@ -819,8 +846,6 @@ decrypt; and messages discarded by the session-window test of §11.4.
 - P2's single-message rule keeps a transfer indistinguishable from ordinary
   encrypted traffic; a burst of sequenced messages between two keys that have
   never spoken before is not.
-- The offline fallback (§10) forfeits every transport property; its security is
-  the passphrase and the physical proximity of the two screens.
 - Availability comes from the interchangeability of operators, not from any one of
   them. This is deployment advice, not a conformance requirement.
 - A compromised device yields whatever that device holds.
@@ -832,7 +857,7 @@ source of the commit-then-reveal construction of §6, by way of Matrix.
 
 ## Status
 
-Version 1.1-draft. Two things are missing: the event kinds of §11.4 are
+Version 1.2-draft. Two things are missing: the event kinds of §11.4 are
 unregistered placeholders and will change, and the test vectors are incomplete —
 the SAS of §6 is covered in `vectors/`, but the one at the declared payload
 maximum that P1 requires is not.

@@ -47,11 +47,13 @@ Until both exist, the incomplete test vectors remain a named gap in
 For §6, with the profile identifier `p` as ASCII:
 
 ```
-commit = SHA-256("qrst-commit-v1" || C.pub || nonce_C)
-code   = SHA-256("qrst-sas-v1" || len(p) || p
+commit = SHA-256("qrst-commit" || v || C.pub || nonce_C)
+code   = SHA-256("qrst-sas" || v || len(p) || p
                  || SND.pub || RCV.pub || nonce_S || nonce_R)
 digits = (code[0..5] as u40 BE) mod 100000, zero-padded to 5
 ```
+
+`v` is the protocol version as a single byte (`0x01` for `v=1`).
 
 `SND.pub` and `RCV.pub` are in role order regardless of which party made
 contact. `code_with_roles_transposed` exists to catch the implementation that

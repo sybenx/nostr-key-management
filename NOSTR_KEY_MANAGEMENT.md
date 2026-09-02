@@ -31,8 +31,8 @@ backed up, and how it may optionally be split so that no single party holds a
 usable copy.
 
 How it reaches a new device is specified in QRST; §3 registers the two payload
-profiles this document uses. The nsec is never displayed except in QRST's offline
-fallback and when the user explicitly exports or views it (§2.2, privileged).
+profiles this document uses. The nsec is never displayed except when the user
+explicitly exports or views it (§2.2, §4.1, privileged).
 
 Where the platform already syncs secrets between the user's own devices, the
 client uses that first and skips the handshake.
@@ -204,9 +204,7 @@ Registered against QRST §5. Moves a whole identity key.
 | P4 check | 64 hex characters, decoding to a scalar in range for secp256k1 and yielding a valid x-only public key. |
 | P5 rendering | Derive the npub, resolve a display name if cached, ask **"Log in as @name?"** |
 | §5 prompt wording | "Send your key to *X*." The prompt MUST state that this is the identity itself and cannot be undone: there is no rotation in Nostr, and a party that receives this key keeps a working copy permanently. |
-| Offline fallback | Permitted, with restrictions below. |
 | Additional tags | `lock`, `enroll` — below. |
-| Companion messages | One: the user's relay list. |
 
 **`lock` tag**, on the payload message: `["lock", "<device|launch|idle:N>"]`.
 
@@ -220,14 +218,14 @@ device long after the session is over and needs a stable address. The transfer i
 the one moment when a channel authenticated by the SAS and a user paying attention
 are both available.
 
-**Offline fallback.** The passphrase-encrypted encoding required by QRST P7 is
-NIP-49 `ncryptsec` with `log_n = 18`, KSB `0x02`. The sending device MUST show the
-line **"Anyone who photographs this code can try passwords against it forever;
-this passphrase is the only protection."**
+**Sender restrictions.** In threshold mode a whole nsec may be sent only from a
+keep-key device — the only device that legitimately holds one. An Offline-mode
+device holds both indices and MUST NOT export.
 
-**Sender restrictions.** In threshold mode the offline fallback is available only
-from a keep-key device — the only device that legitimately holds a whole nsec. An
-Offline-mode device holds both indices and MUST NOT export.
+QRST defines no in-ceremony offline transfer (QRST §10). To move this key with no
+network — between two co-present screens — export it as NIP-49 `ncryptsec` (§4.1)
+and import it on the other device; that is the passphrase-encrypted form the QRST
+offline path used to carry.
 
 ### 3.2 Transfer policy
 
@@ -250,9 +248,7 @@ Registered against QRST §5. Gives a joining device the device share (§7.7).
 | P4 check | `share·G == group_pub + commitment·2`. |
 | P5 rendering | The identity the share belongs to, and that this device will hold **one share, not the key** — it cannot sign alone and cannot sign at all until the user admits it at a server (§7.7). |
 | §5 prompt wording | "Give *X* a share of your key." Materially less severe than `nostr-nsec`: a share alone signs nothing, and the device can be revoked. |
-| Offline fallback | **Not permitted.** |
 | Additional tags | `enroll`, as above. |
-| Companion messages | None. |
 
 > **Resolved in 9.0.** In 8.0 this profile did not fit QRST's model: §7.7 had the
 > joining device receive two partials from two parties, which QRST's one-Sender
@@ -486,7 +482,8 @@ devices. A Receiver MUST NOT set or change its own label.
 A server is a Nostr-speaking service with a stable enrollment keypair `S` and an
 HTTPS base URL.
 
-1. Server displays a QR: `qrst://<S.npub>?v=1&mode=server&url=<https base url>`.
+1. Server displays a QR, in QRST's `https` fragment form (QRST §11.2):
+   `https://<host>/qrst#v=1&mode=server&npub=<S.npub>&url=<https base url>`.
 2. Phone scans. Client sets up backup factors per §4.2 — passkey by default where
    available, passphrase always. Backup setup happens only on trusted devices; a
    restricted device MUST NOT present a passphrase field.

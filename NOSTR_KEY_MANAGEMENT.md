@@ -247,7 +247,7 @@ which, and the paste-delivered form uses the `frost://` carrier of QRST §12.3.
 
 | QRST requirement | This profile |
 |---|---|
-| Payload encoding | The 32-byte share scalar, 64 lowercase hex characters, plus `index`, `group_pub`, `commitment`, `epoch`, `group_secret`. `index = 2` is the co-signer replica; `index ≥ 1` unique is a quorum share. |
+| Payload encoding | The 32-byte share scalar, 64 lowercase hex characters, plus `index`, `group_pub`, `commitment`, `epoch`, `group_secret`, and `CK` only when the receiver is trusted (§7.7). `index = 2` is the co-signer replica; `index ≥ 1` unique is a quorum share. Carried in the QRST PAYLOAD (kind 24405). |
 | Max size | Default (2048 B). |
 | P4 check | `share·G == group_pub + commitment·index`. |
 | P5 rendering | The identity the share belongs to, and that this device will hold **one share, not the key** — it cannot sign alone, and cannot sign at all until admitted (§7.1). For a quorum share it also names that two of your devices must be present to sign. |
@@ -717,20 +717,24 @@ random one-time key. Keep-key and Offline-mode devices decrypt alone.
 
 ### 7.7 Adding a device after activation
 
-QRST Flow A or B runs unchanged through the code-entry step. The Sender wraps
-`KEY_SHARE_PART` (kind 24307) carrying share 2, `group_pub`, `commitment`, `epoch`
-and `group_secret` to the Receiver's burner; `CK` rides along only when the Receiver
-is trusted.
+A device is added by an ordinary QRST transfer with profile `frost-share` (§3.3).
+The share travels as the QRST **PAYLOAD** (kind 24405) — the profile's encoding:
+share 2 at index 2, `group_pub`, `commitment`, `epoch`, `group_secret`, and `CK` as
+an additional field only when the Receiver is trusted. There is no separate
+share-transfer kind; a share is an opaque QRST payload like any other.
 
 The Receiver verifies `share·G == group_pub + commitment·2`, derives the npub from
 `group_pub`, shows "Log in as @name?", stores on Yes, and ACKs. The Sender updates
 the device list with the new `E.pub`, `admitted: false`.
 
-**The new device cannot sign until admitted (§7.1).** Admission is a separate,
-privileged act on a trusted device or the server console, and is where the user
-sees the device by label before granting it anything. A hostile enrollment yields an
-inert share — which is why the QRST code ceremony is still required: an inert share
-becomes the key if share 1 ever leaks (§7.12).
+**The new device cannot sign until admitted (§7.1)** — a separate privileged act on
+a trusted device or the server console, where the user sees the device by label.
+That admission gates *signing*, not *reconstruction*: an intercepted share plus one
+other share (share 1, §7.12) is the key, and revocation does not undo a
+reconstruction. So the enrollment channel is load-bearing. The transfer uses the SAS
+(§6) unless the token reached the Receiver by a channel the user controls — its own
+camera, or a local same-user paste — in which case the §12.3 light flow's returned
+secret suffices. `nostr-nsec`, being irreversible, always uses the SAS.
 
 Only trusted devices may act as Sender.
 
@@ -958,9 +962,8 @@ Transfer kinds are defined in QRST §11.4 and are not repeated here.
 
 | Kind | Name | Direction |
 |---|---|---|
-| 24305 | KEY_SHARE | issuer → member |
+| 24305 | KEY_SHARE | issuer → member (activation/rotation, to `E.pub`) |
 | 24306 | SHARE_ACK | member → issuer |
-| 24307 | KEY_SHARE_PART | Sender → Receiver (§7.7) |
 | 24308 | OFFLINE_REQUEST | requester → trusted devices |
 | 24309 | KEY_ROTATE | initiator or server → member |
 | 24311 | APPROVAL | second trusted device → server (§7.1) |
@@ -971,7 +974,9 @@ Transfer kinds are defined in QRST §11.4 and are not repeated here.
 | 24318 | ALERT | co-signer → trusted devices (§7.13) |
 | 24319 | EPOCH_FINALIZED | initiator → members (§7.4) |
 
-All placeholders. 24301–24304, 24310, 24312 and 24313 are unused.
+All placeholders. 24301–24304, 24307, 24310, 24312 and 24313 are unused — 24307
+(formerly `KEY_SHARE_PART`) was retired when share delivery became an ordinary QRST
+`frost-share` payload (§7.7).
 
 All are sealed and wrapped exactly as QRST §11.4 specifies, with one difference:
 **§7 wraps use `expiration = now + 30 days`**, not the ten-minute transfer TTL, so
@@ -1022,8 +1027,9 @@ and QRST still sees one Sender:
    because those two already reconstruct in this trust model, so nothing is exposed
    between them that the model did not already grant.
 2. That device is the QRST Sender and delivers the finished `share_k` to the joining
-   device as a single `frost-share` payload (QRST §12.3, `frost://`). The joining
-   device verifies `share_k·G == group_pub + commitment·k`, stores it
+   device as a single `frost-share` QRST payload (kind 24405) — under the SAS, or the
+   §12.3 light flow (`frost://`) over a controlled channel, exactly as §7.7. The
+   joining device verifies `share_k·G == group_pub + commitment·k`, stores it
    `admitted: false`, and is admitted by a trusted device (§7.1).
 
 **Revocation is rotation.** With no server to refuse a revoked `E`, device-quorum

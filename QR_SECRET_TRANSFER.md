@@ -321,7 +321,8 @@ Two distinct user actions, on two devices. Both are mandatory and neither may be
 defaulted, remembered, or suppressed. The **code comparison of §9.2** is the one
 part a profile may replace: a profile that declares the light flow of §12.3 (a
 revocable, admission-gated payload) substitutes a returned-secret handshake for the
-typed SAS. The two consent actions below are never waived.
+typed SAS **over a controlled delivery channel**, keeping the SAS otherwise. The two
+consent actions below are never waived.
 
 ### 9.1 Release consent, on the Sender
 
@@ -800,11 +801,17 @@ shown, typed, or read back by hand.
 
 **What it stops, and what it does not.** The returned secret stops a party that
 never received the token — a racing responder, an overheard relay. It does **not**
-stop interception of the token itself: whoever obtains the token obtains the
-secret. That residual is accepted here, and only here, because the payload (a)
-is not the key, (b) is inert until the user admits the receiving device by label
-(NKM §7.1), and (c) is revocable afterwards (NKM §7.9). A profile whose payload
-lacks all three MUST NOT use this flow, and MUST use the SAS.
+stop interception of the token itself: whoever obtains the token obtains the secret,
+receives the payload, and — for a threshold share — holds one of the shares the key
+reconstructs from. Admission (NKM §7.1) gates *signing*, not reconstruction, and
+rotation (NKM §7.9) is forward-only, so **neither undoes a share intercepted in
+transit and combined with another**. The light flow therefore suits delivery over a
+channel the sender controls — its own camera, or a local same-user paste — where
+interception means a local compromise that already loses. Over a channel the sender
+does not control (a link relayed through a third party), the SAS is required. A
+profile eligible for this flow MUST be revocable and admission-gated so that a
+*mis-delivered* share cannot sign; the reconstruction residual above is the reason
+the eligibility does not extend to irreversible payloads, which MUST use the SAS.
 
 **Consent still applies, lightened.** The Sender's release consent (§9.1) is still
 shown and still fails closed on friction tier, but in the share profile's words
@@ -884,10 +891,12 @@ decrypt; and messages discarded by the session-window test of §11.4.
 - **Pairing by copied URI widens the delivery channel for that risk**, since a URI
   can be sent in a message while a QR must be placed in front of the user. §12.1
   requires extra friction on the direction where this matters.
-- **The §12.3 light flow trades the SAS for a returned secret**, and so does not
-  stop a party that intercepts the token itself. It is confined to payloads that are
-  not the key, are inert until admitted, and are revocable (the threshold share of
-  NKM §7.18); no irreversible secret may use it.
+- **The §12.3 light flow trades the SAS for a returned secret**, so it does not stop
+  a party that intercepts the token itself — and for a threshold share, an
+  intercepted share plus one other reconstructs the key, which neither admission nor
+  rotation undoes. It is therefore for controlled delivery channels (own camera,
+  local paste); an uncontrolled channel keeps the SAS, and no irreversible payload
+  may use it at all.
 - **An operator sees both halves of a session.** T4 covers unlinkability to
   long-lived identity only. A relay carrying both parties observes a subscription
   for one burner and wraps addressed to the other, seconds apart, and can pair

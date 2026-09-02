@@ -41,9 +41,6 @@ to fill some or all of those gaps.
 
 ## What this project is not
 
-I do not intend to implement this spec directly here or elsewhere. This spec is
-meant as a reference for other implementations to follow.
-
 The transfer mechanism is not new cryptography. The commit-then-reveal code
 comparison is ZRTP's, by way of Matrix, and it is cited as such. What is unusual
 is running it over infrastructure nobody operates for the purpose.

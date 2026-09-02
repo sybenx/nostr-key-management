@@ -55,10 +55,9 @@ signer is not among the burners it issued a nonce to" is.>
 Every entry needs a section number and a proposed fix. Both are what make an
 entry actionable rather than a note that something felt off.
 
-Issues concerning the three gaps already named in [README.md](README.md) — the
-placeholder event kinds, the absence of test vectors, and the missing
-`EMOJI_TABLE` in Appendix A — do not need to be filed here. They are known and
-tracked.
+Issues concerning the two gaps already named in [README.md](README.md) — the
+placeholder event kinds and the absence of test vectors — do not need to be
+filed here. They are known and tracked.
 
 ---
 

@@ -1437,4 +1437,4 @@ unregistered placeholders and will change, and there are no test vectors for any
 derivation — the SAS of §6, and one at the declared payload maximum as P1
 requires.
 
-Review is more useful than implementation at this stage.
+Implementation has begun. Review is more useful than deployment at this stage.

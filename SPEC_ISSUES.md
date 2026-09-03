@@ -96,6 +96,13 @@ The mode that `t = 3` exists for — "surviving any two devices being compromise
 is the one where these matter most, and a client that implements §7.18 literally
 ships a `t = 3` option that does not work.
 
+Measured, against `@noble/curves` 2.3.0's `schnorr_FROST` and recorded in
+`vectors/nkm-frost.json`: a `min: 3` trusted dealing emits **three** commitments,
+and §7.18's share check is false at every index of that key set while the general
+form holds and the library's own RFC 9591 `vss_verify` accepts. The library models
+commitments as an array for exactly this reason, which is also the proposed fix
+below.
+
 **Proposed fix:** §7.4's epoch record should carry `commitments: [a_1·G, …,
 a_{t−1}·G]` in place of the scalar `commitment`, and state the check as
 `share_i·G == group_pub + Σ_{j=1}^{t−1} commitments[j]·i^j`, noting that at `t = 2`
@@ -149,56 +156,69 @@ answers for, MUST keep the same per-peer log, and MUST send the daily
 continuously reachable these are per-peer-pair rather than global, and the section
 should say so: they bound one hostile pairing, not the aggregate."
 
-### §7.4's parity handling and the named ciphersuite's parity handling are two answers to one question
+### §7.4's parity rule is redundant with its own ciphersuite, and its re-negation corrupts the exported nsec
 
 **Document:** NOSTR_KEY_MANAGEMENT.md
 **Section:** §7.4 (and §7.5, §7.15)
-**Kind:** ambiguity
+**Kind:** suspected error
 
 §7.4 names the ciphersuite as "FROST per RFC 9591 with the secp256k1 Taproot
-variant as implemented by `frost-secp256k1-tr`" and, in the same list item,
-specifies parity handling of its own: "If `pubkey(nsec)` has odd y, the dealer uses
-`a_0 = n − nsec` so the group key is even-y. On reconstruction the result is
-`n − nsec` for an odd-y key; the client MUST re-negate before storing or
-exporting."
+variant" and, in the same list item, specifies parity handling of its own: "If
+`pubkey(nsec)` has odd y, the dealer uses `a_0 = n − nsec` so the group key is
+even-y. On reconstruction the result is `n − nsec` for an odd-y key; the client
+MUST re-negate before storing or exporting."
 
-`frost-secp256k1-tr` handles BIP-340's x-only negation itself — that is what the
-`-tr` variant is for; it conditionally negates the group element and signers'
-contributions at signing time so that signatures verify under an even-y x-only
-group key. The specification therefore names two independent solutions to the same
-problem and does not say which one is authoritative. An implementer who applies
-both deals shares from a pre-negated `a_0` and then hands them to a library that
-negates again. The result is a group key that is not the user's npub.
+The taproot variant handles BIP-340 parity itself — that is what the variant is
+for. Measured against `@noble/curves` 2.3.0's `schnorr_FROST` with an odd-y
+fixture nsec (`vectors/nkm-frost.json`):
 
-The failure mode is the reason this is worth fixing rather than leaving to
-judgement. It is silent, it affects only odd-y keys so it passes roughly half of
-casual testing, and it is discovered *after* §7.5 step 5 has wiped the local nsec
-and every synced copy. Recovery is the §4.2 backup, if one was taken.
+- Dealing from the **raw** nsec produces a group commitment whose x-only
+  serialisation is the npub, and an aggregated signature that verifies under that
+  npub as a plain BIP-340 signature. The dealer-side negation is not needed.
+- Dealing from §7.4's **negated** `a_0` also works, and verifies under the same
+  npub. The negation is redundant rather than harmful.
+- `combineSecret` over the raw-dealt shares returns **the nsec itself**, not
+  `n − nsec`.
 
-The choice also has a visible consequence: dealing from the raw `nsec` and letting
-the ciphersuite own parity makes reconstruction yield `nsec` directly, at which
-point §7.4's re-negation MUST and its restatement in §7.15 are wrong rather than
-merely redundant.
+So the first sentence is unnecessary and the second is wrong. A client that deals
+per the ciphersuite — which is what an implementer reaching for the named crate
+will do — and then obeys "the client MUST re-negate before storing or exporting"
+stores `n − nsec` as the user's key.
 
-**Proposed fix:** §7.4 should state one and delete the other. The narrower change
-is to keep the dealer's negation and require the ciphersuite be driven with its own
-parity handling in the configuration where the group key is used untweaked and
-unmodified — which is also worth stating explicitly, since the crate's default is
-to sign against the untweaked group key and NKM wants no BIP-341 tweak. The
-cleaner change is: "The dealer sets `a_0 = nsec` unmodified. BIP-340 parity is the
-ciphersuite's responsibility: `frost-secp256k1-tr` negates the group element and
-signers' contributions as required, and the group key is used untweaked (no
-BIP-341 tweak is applied). Reconstruction (§7.15) yields `nsec` directly and no
-re-negation is performed." Either way §6 should gain a vector generated from an
-**odd-y** nsec — group key, both shares, the epoch record and one verifying
-signature — because that vector is the only thing that catches the wrong choice
-before deployment.
+Nothing in the specification detects this. `n − nsec` has the same x-only pubkey,
+signs identically under BIP-340, and derives the same NIP-44 conversation keys
+(§7.4 is right that ECDH is unaffected, because `(n − nsec)·P` is the negation of
+`nsec·P` and shares its x-coordinate). §7.5's guard cannot see it either: it
+verifies `group_pub` against "the user's known x-only pubkey", and **both parities
+serialise to the same x-only value**, so the check passes whichever the dealer
+chose. The share check beside it is internally consistent with whatever `a_0` was
+dealt and passes too.
 
-*Note in passing, not a defect:* the untweaked group key is documented as
-susceptible to a rogue-tweak attack at DKG time. NKM never runs a DKG — §7.5 is a
-trusted dealer holding the whole nsec — so the caveat does not apply here, and the
-dealer model is what makes untweaked use safe. Worth a sentence in §7.4 so a
-reviewer who finds the caveat does not have to re-derive that.
+What breaks is the nsec as a **string**. §7.15 disable is the operation that
+reconstructs and stores, so a user who turns threshold signing off gets a key that
+works everywhere and matches nothing: a different `ncryptsec`, a different `nsec1…`
+from the one they wrote down at §4 backup, and a different value from the one any
+other client holding the same identity will show them. In a key-management
+specification that is the wrong thing to be silently inconsistent about.
+
+**Proposed fix:** §7.4's ciphersuite item should read: "Scheme: FROST per RFC 9591
+with the secp256k1 Taproot variant as implemented by `frost-secp256k1-tr` or
+`@noble/curves`' `schnorr_FROST`. The dealer sets `a_0 = nsec` unmodified. BIP-340
+parity is the ciphersuite's responsibility — it negates the group element and
+signers' contributions as required — and the group key is used **untweaked**: no
+BIP-341 tweak is applied. Reconstruction (§7.15) therefore yields `nsec` directly
+and the client MUST NOT re-negate it. Note that `nsec` and `n − nsec` serialise to
+the same x-only pubkey, so neither §7.5's group-key check nor the share check can
+detect a client that gets this wrong; `vectors/nkm-frost.json` is the test that
+can." The existing sentence about ECDH being unaffected is correct and should stay,
+with its reason given: the two candidate secrets produce shared points that differ
+only in the sign of y, and NIP-04/44 use the x-coordinate.
+
+*Not a defect, but worth a sentence in §7.4 so a reviewer does not have to
+re-derive it:* the untweaked group key is documented as susceptible to a rogue-tweak
+attack at DKG time. §7.5 is a trusted dealer holding the whole nsec and runs no DKG,
+so the caveat does not apply, and the dealer model is what makes untweaked use safe
+here.
 
 ### §7.9 step 4 is written for one server and the model has many
 

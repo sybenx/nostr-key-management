@@ -1,8 +1,9 @@
 # Test vectors
 
-Known answers for the derivations in [QR_SECRET_TRANSFER.md](../QR_SECRET_TRANSFER.md).
-An implementation that reproduces every value here has read the specification
-the way three independent readings of it did.
+Known answers for the derivations in [QR_SECRET_TRANSFER.md](../QR_SECRET_TRANSFER.md)
+and [NOSTR_KEY_MANAGEMENT.md](../NOSTR_KEY_MANAGEMENT.md). An implementation that
+reproduces every value here has read the specification the way three independent
+readings of it did.
 
 These are normative. Where a vector and an implementation disagree, and the
 vector is confirmed to follow the specification text, the implementation is
@@ -16,7 +17,8 @@ None belongs to anybody, and none should ever be used for anything.
 
 | File | Covers |
 |---|---|
-| `qrst-sas.json` | §6 — the commit, the transcript hash, and the five digits. |
+| `qrst-sas.json` | QRST §6 — the commit, the transcript hash, and the five digits. |
+| `nkm-frost.json` | NKM §7.4, §7.5, §7.9, §7.18 — dealing, share verification, signing, rotation. |
 
 ## Provenance
 
@@ -25,6 +27,26 @@ one it tests, so a misreading of §6 has to be made twice to pass, and was then
 reproduced a third time directly from the specification prose. The commit for
 both flows, the code, the digits, and the roles-transposed negative case all
 agree.
+
+`nkm-frost.json` was generated with `@noble/curves` 2.3.0's `schnorr_FROST` — RFC
+9591 over the secp256k1 taproot ciphersuite §7.4 names, rather than a
+reimplementation of it — and the §7.4 share check and §7.9 rotation algebra were
+then re-derived independently from raw curve operations, so the two agree about
+the arithmetic without sharing any code that performs it. The file regenerates
+byte-identically: the dealer, the rotation delta and every signing nonce come
+from a seeded generator. **A real dealer MUST NOT**; §7.4 forbids a derived `a_1`
+because a reproducible polynomial resurrects revoked shares, and the determinism
+here exists only so the file can be a fixture.
+
+Its fixture nsec has an **odd-y** pubkey, which is the point of it. §7.4's parity
+rule is the only behaviour in either document that depends on key parity, and both
+`nsec` and `n - nsec` serialise to the same x-only pubkey — so an even-y fixture
+passes whichever reading an implementer took, and so does §7.5's check of
+`group_pub` against the user's known pubkey. Two of the values in this file are
+deliberately **false** (`t3[*].nkm_degree1_form_holds`): §7.18 offers `t = 3` and
+states a share check that does not hold at that threshold, and an implementation
+that reproduces the `false` has read the section correctly and found it
+unimplementable as written. See [SPEC_ISSUES.md](../SPEC_ISSUES.md).
 
 ## What is still missing
 

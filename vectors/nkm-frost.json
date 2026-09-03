@@ -1,0 +1,159 @@
+{
+  "spec": "NOSTR_KEY_MANAGEMENT.md",
+  "version": "9.2-draft",
+  "section": "7.4, 7.5, 7.9, 7.18",
+  "description": "Known answers for the FROST dealing, share verification, signing and rotation of §7. The fixture nsec has an ODD-y pubkey deliberately: §7.4's parity rule is the only behaviour in either document that depends on key parity, so an even-y fixture would pass whichever reading of it an implementer took. Generated with @noble/curves 2.3.0's `schnorr_FROST` — RFC 9591 over the secp256k1 taproot ciphersuite §7.4 names. Every key here is a fixture and belongs to nobody.",
+  "ciphersuite": "FROST(secp256k1, SHA-256) — BIP-340 / taproot variant, RFC 9591",
+  "message": "The 32 bytes signed. A real signer hashes a NIP-01 serialised event to get this; the vector fixes it so the signatures below are reproducible.",
+  "message_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+  "nsec": "f8e40edde28e8eddb080e8f8f9c95652c471df11723925ad957b70992b6e03f2",
+  "nsec_pubkey_parity": "odd",
+  "npub_xonly": "3fa5c3f050f639b122a6ba87690d3b8a6cbaf54a5d719881737ac4855dfc2c9a",
+  "parity": {
+    "description": "§7.4 tells the dealer to use `a_0 = n - nsec` for an odd-y key, and names a ciphersuite that already handles BIP-340 parity itself. Dealing from the RAW nsec is what this vector does, and it produces a group key whose x-only serialisation is the npub and signatures that verify under it. The dealer-side negation is therefore not required. It is also not detectable: both `nsec` and `n - nsec` serialise to the SAME x-only pubkey, so §7.5's check of `group_pub` against the user's known pubkey passes either way.",
+    "group_commitment_compressed": "033fa5c3f050f639b122a6ba87690d3b8a6cbaf54a5d719881737ac4855dfc2c9a",
+    "group_commitment_y_parity": "odd",
+    "group_xonly_equals_npub": true,
+    "negated_a0_has_same_xonly": true,
+    "reconstruction_equals_nsec_without_renegation": true
+  },
+  "t2": {
+    "description": "§7.4's co-signer parameters: t = 2, index 1 the server, index 2 a device. `commitments[0]` is the group public key; `commitments[1]` is §7.4's `commitment` (a_1·G). At t = 2 there is exactly one coefficient commitment, which is why §7.4's scalar `commitment` field is sufficient here and only here.",
+    "signers": {
+      "min": 2,
+      "max": 3
+    },
+    "commitments": [
+      "033fa5c3f050f639b122a6ba87690d3b8a6cbaf54a5d719881737ac4855dfc2c9a",
+      "03405d00cf46c08f1339e5e3b824e47e59e29d7f4ae47a25b73c6f639656495b9e"
+    ],
+    "shares": [
+      {
+        "index": 1,
+        "signing_share": "cbd8e956adf7e4c2b94a826071f306eeceebf51896a80b4266e2d1c1d79d3603",
+        "nkm_degree1_form_holds": true,
+        "general_form_holds": true
+      },
+      {
+        "index": 2,
+        "signing_share": "9ecdc3cf79613aa7c2141bc7ea1cb78ad9660b1fbb16f0d7384a32ea83cc6814",
+        "nkm_degree1_form_holds": true,
+        "general_form_holds": true
+      },
+      {
+        "index": 3,
+        "signing_share": "71c29e4844ca908ccaddb52f62466826e3e02126df85d66c09b194132ffb9a25",
+        "nkm_degree1_form_holds": true,
+        "general_form_holds": true
+      }
+    ],
+    "signed_by": [
+      1,
+      2
+    ],
+    "nonce_commitments": [
+      {
+        "identifier": "0000000000000000000000000000000000000000000000000000000000000001",
+        "hiding": "038869c5d30841e4e784b32619c2b70bfd12f9976efeced4525fa5020a9b89fc13",
+        "binding": "027ff7b49407a46d54d252657c6bbcbdedbc3330ec016233cd3106d00b7b926ce0"
+      },
+      {
+        "identifier": "0000000000000000000000000000000000000000000000000000000000000002",
+        "hiding": "02caa8a17c5c8e4bc61e4acecfbe9a7ca3f2c36f46edc151f004556c1e5a7e358b",
+        "binding": "024cece062e99264becc2139070172e26c510eddd4801041ec8f3613acb117420c"
+      }
+    ],
+    "signature": "1a0c9b95448e6a57d4df80208ab13e4ff26f9a1d66a5efd6b65410e2be6a18883a81ee45d9a8b520038e24ff310e19de88b1b84fcaddb656305ee90201162af5",
+    "signature_verifies_under_npub": true
+  },
+  "t3": {
+    "description": "§7.18 permits t = 3. The dealer emits t - 1 = TWO coefficient commitments, so `commitments` has three entries and §7.4's epoch record — which carries a single `commitment` — cannot express this key set. §7.18 states the share check as `share_i·G == group_pub + commitment·i`, generalising §7.4 over the index only; that form is false at EVERY index here, while the general form holds. An implementation that reproduces `nkm_degree1_form_holds: false` has read §7.18 correctly and found it unimplementable as written. See SPEC_ISSUES.md.",
+    "signers": {
+      "min": 3,
+      "max": 4
+    },
+    "commitments": [
+      "033fa5c3f050f639b122a6ba87690d3b8a6cbaf54a5d719881737ac4855dfc2c9a",
+      "03aafda01ce0a05256f337ae5707a348286481a2dc591f2f2286e5429bb80189e6",
+      "023a6a153ee7c9f3ff850779851980b755deea22886ffb2c9d30fefd89618ecae7"
+    ],
+    "shares": [
+      {
+        "index": 1,
+        "signing_share": "322aaf7c5d5087cc6f1d172a535d545bb9cd316a2b89591ba973edf6ec5827e9",
+        "nkm_degree1_form_holds": false,
+        "general_form_holds": true
+      },
+      {
+        "index": 2,
+        "signing_share": "b45ee70f4e134f0260d52911485d35f1779a379ca138c02f6c0a3c26e2da8dec",
+        "nkm_degree1_form_holds": false,
+        "general_form_holds": true
+      },
+      {
+        "index": 3,
+        "signing_share": "7f80b596b4d6e47f85a91eadd8c8fb16887b37db74b61a715d999e0f6e88b379",
+        "nkm_degree1_form_holds": false,
+        "general_form_holds": true
+      },
+      {
+        "index": 4,
+        "signing_share": "93901b12919b4843dd98f80004a0a3c9a71f0f0d554a081d3df4723d5f98d9d1",
+        "nkm_degree1_form_holds": false,
+        "general_form_holds": true
+      }
+    ]
+  },
+  "rotation": {
+    "description": "§7.9 tier 2 over the t = 2 set: δ(x) = r·x with δ(0) = 0, so share_i ← share_i + i·r and commitment' = commitment + r·G. `a_0` is untouched, so the group key — and the user's npub — do not change, and nothing is reconstructed. A share retained from before the rotation no longer pairs with one from after it, which is the whole property revocation rests on.",
+    "r": "5942647158bd621a124104d5a6c3f54ed730609769dbbc83d93778eb14c85c87",
+    "commitments": [
+      "033fa5c3f050f639b122a6ba87690d3b8a6cbaf54a5d719881737ac4855dfc2c9a",
+      "03d48a926f7b4367046996440bc19ecfc0388a71050524e18baa6ce8f3d0f413fa"
+    ],
+    "shares": [
+      {
+        "index": 1,
+        "signing_share": "251b4dc806b546dccb8b873618b6fc3eeb6d78c9513b278a8047ec201c2f5149",
+        "nkm_degree1_form_holds": true,
+        "general_form_holds": true
+      },
+      {
+        "index": 2,
+        "signing_share": "51528cb22adbfedbe696257337a4a229cd17ef67df85c9a32ae6c633dd26dfe1",
+        "nkm_degree1_form_holds": true,
+        "general_form_holds": true
+      },
+      {
+        "index": 3,
+        "signing_share": "7d89cb9c4f02b6db01a0c3b056924814aec266066dd06bbbd585a0479e1e6e79",
+        "nkm_degree1_form_holds": true,
+        "general_form_holds": true
+      }
+    ],
+    "group_key_unchanged": true,
+    "signed_by": [
+      1,
+      3
+    ],
+    "nonce_commitments": [
+      {
+        "identifier": "0000000000000000000000000000000000000000000000000000000000000001",
+        "hiding": "036c5ab2a932ca6b1d75b1dd5ce3788fdfd9f6e7748bb3950ed547205b81a157bd",
+        "binding": "032cf76db440514c7a4d4df5b750adf3e765befba67dc589c6a5d8d2f4c1c3d8f6"
+      },
+      {
+        "identifier": "0000000000000000000000000000000000000000000000000000000000000003",
+        "hiding": "0353cb96493eadee663101c4f497012e7798ba4266795226ba28f26b942d2afc12",
+        "binding": "024ac5e9ab7b5230e39cac424e88deb128ade81043bbd093af194a705322294c70"
+      }
+    ],
+    "signature": "b44580c28c4bc123ffd8f3044cc03e7f24b0ef025033dd2ef136569c4ff64d3be271bcd3299f9ca301423a7273cbb4653d90bc72c0b421ea01436216d29f8fad",
+    "signature_verifies_under_npub": true,
+    "stale_share_rejected": {
+      "description": "Index 1's PRE-rotation share paired with index 3's post-rotation share. This MUST NOT produce a signature that verifies under the npub.",
+      "rejected": true,
+      "how": "aggregation failed"
+    }
+  }
+}

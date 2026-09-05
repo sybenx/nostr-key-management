@@ -253,7 +253,10 @@ budget; the multiple-responder notice; NKM §4.1 `ncryptsec` export (which is al
 `nostr-nsec`'s no-network path — the QRST §10 offline tier is profile-gated and
 `nostr-nsec` does not use it); NIP-07 signer; tier 0 bundle. No server, no account,
 nothing to run.
-Ships the first vector files.
+Ships the first vector files. `vectors/nkm-frost.json` exists already and belongs
+in CI from this release, well before anything signs with a threshold key: it is
+the only thing that catches the NKM §7.4 parity trap, and it costs nothing to run
+against a build that does not use FROST yet.
 
 **v0.2 — backup.** NKM §4.2 blob store, `@qrst/server` on a Worker, NKM §7.10
 recovery in a native context only, and the recovery-delay notices. The server is
@@ -264,12 +267,34 @@ the Sender's consent box, per-device settings, the transfer records of NKM §3.2
 surfaced. Still no threshold; this is the bookkeeping NKM §7 needs and it has
 standalone value as a "where am I logged in" screen.
 
-**v0.4 — threshold.** NKM §7.4–NKM §7.15. The largest step by a wide margin, and
-the one that should not start until v0.1–v0.3 have been used by somebody. The spec
-question that once blocked it is settled: under 9.0's replica-by-index scheme every
-device holds the same share, so `frost-share` issuance is one Sender, one Receiver,
-one payload (NKM §3.3), and no carve-out to QRST is required. The camera-less case
-uses copy-paste pairing (QRST §12.1) over relays.
+**v0.4 — threshold, device quorum first.** NKM §7.18 over NKM §7.4's ciphersuite
+and epoch records: a trusted dealer, unique per-device indices, one-round signing
+between two devices, threshold ECDH, and rotation. The largest step by a wide
+margin, and the one that should not start until v0.1–v0.3 have been used by
+somebody.
+
+Device quorum before co-signer, deliberately, and the reason is that **it has no
+server at all**: no Worker to deploy, no rows-written budget, no NKM §7.13 audit
+log, and none of NKM §7.9 step 4's distributed-destruction problem, because
+rotation is joint between the devices. NKM §7.18's own recovery paragraph accepts
+an `ncryptsec` or a printed code as the NKM §4 backup, so it does not drag NKM
+§4.2's blob store back in either. It is a pure client deliverable that exercises
+every primitive the co-signer mode also needs, which makes it the cheapest place
+to get the crypto layer wrong and find out.
+
+Two gaps have to be filled in code because the specification does not describe
+them (SPEC_ISSUES.md): NKM §7.15 disable reads "collect share 1 from a server" and
+there is none, so it becomes "collect `t − 1` other members' shares"; and NKM §7.14
+Offline mode and NKM §7.5a keep-key do not apply to this mode at all. Ship `t = 2`
+only.
+
+**v0.5 — co-signer.** NKM §7.1–NKM §7.17 and `@qrst/server`'s Worker target, once
+the crypto layer of v0.4 has a user. This is where the infrastructure plan lives,
+and §8 has the constraint that shapes it: signing runs in a Durable Object, not a
+Worker route. Under 9.0's replica-by-index scheme every device holds the same
+share, so `frost-share` issuance is one Sender, one Receiver, one payload (NKM
+§3.3), and no carve-out to QRST is required. The camera-less case uses copy-paste
+pairing (QRST §12.1) over relays.
 
 **1.0 — when the kinds are registered.**
 
@@ -277,17 +302,59 @@ uses copy-paste pairing (QRST §12.1) over relays.
 
 ## 8. Risks, stated honestly
 
-**FROST in JavaScript.** There is no established, audited FROST implementation
-over BIP-340 in JavaScript. `@noble/curves` provides the curve and Schnorr
-primitives, not the threshold protocol. Writing RFC 9591 plus taproot parity
-handling by hand is a reviewable-crypto project with a review budget attached.
-The better move is to compile the ciphersuite NKM §7.4 already names —
-`frost-secp256k1-tr`, Zcash Foundation, Rust, on crates.io — to WebAssembly and
-use it in both browser and Node. That is byte-for-byte the construction the spec
-points at rather than a reimplementation of it, and it removes the largest single
-source of interoperability risk. Cost is a Rust toolchain in the build and a few
-hundred kilobytes in the NKM §7 bundle, acceptable because NKM §7 is opt-in and lazily
-loaded.
+**FROST in JavaScript — no longer the blocker this section used to describe.**
+`@noble/curves` 2.3.0 ships `schnorr_FROST`: RFC 9591 over the secp256k1 taproot
+ciphersuite NKM §7.4 names, with a trusted dealer, the RFC's own Appendix C.2
+`vss_verify`, `commit`/`signShare`/`verifyShare`/`aggregate`, and `combineSecret`.
+That is the construction the specification points at, in the language, in a
+library a Nostr client already depends on for BIP-340. It removes the Rust
+toolchain, the WebAssembly artifact and the second crypto dependency together, and
+costs **10.2 KB gzipped** on top of the `secp256k1.js` already shipped — against
+the few hundred kilobytes a compiled `frost-secp256k1-tr` was budgeted at.
+Verified end to end against an odd-y fixture — dealing, VSS, two-of-three signing,
+rotation, and rejection of a retained pre-rotation share — in
+`vectors/nkm-frost.json`.
+
+What has **not** been established is an audit. The earlier text asked for an
+"established, audited" implementation and this is not yet one; "exists, and is
+correct on our vectors" is the weaker claim, and it is the one that can honestly
+be made. Two things follow. Budget a review of the FROST path specifically rather
+than treating the dependency as settled. And keep `frost-secp256k1-tr` in the
+picture as the cross-implementation check the vectors are run against, which is
+the role it is actually good for — a second implementation agreeing on a known
+answer is worth more than either one being trusted alone.
+
+**The parity trap is invisible, and the vector is the only thing that catches
+it.** NKM §7.4 carries a dealer-side negation for odd-y keys that the taproot
+ciphersuite makes unnecessary, plus a re-negation on reconstruction that is
+actively wrong (SPEC_ISSUES.md). The reason it needs naming as an implementation
+risk and not only a specification one is that **nothing in the protocol detects
+it**: `nsec` and `n − nsec` serialise to the same x-only pubkey, sign identically
+under BIP-340, and derive the same NIP-44 conversation keys, so NKM §7.5's check of
+`group_pub` against the user's known pubkey passes either way and so does the
+share check beside it. A client that gets this wrong ships, works, and hands back
+a different `nsec1…` than the user wrote down, at NKM §7.15 disable — the one
+moment they are most likely to be moving between clients. Run the odd-y vector in
+CI; half the keyspace is even-y and will pass regardless.
+
+**`t = 3` cannot be implemented as NKM §7.18 states it.** The section offers it,
+and the epoch record has room for one coefficient commitment where a degree-2
+polynomial needs two — so the share check it specifies is false at every index of
+a real `t = 3` key set (`vectors/nkm-frost.json`, where those two `false` values
+are deliberate). Ship `t = 2` and refuse `t = 3` in the UI until the specification
+is fixed, and store the epoch record's commitment as an **array** from the first
+release even so: at `t = 2` it has one element and behaves identically, and the
+alternative is migrating every deployed epoch record later.
+
+**A signing round does not fit in a Cloudflare Worker's CPU budget.** Measured on
+Node / Apple Silicon, which is the generous end: `commit` 0.67 ms, `signShare`
+4.48 ms, `aggregate` 11.03 ms, `trustedDealer` 2-of-3 1.65 ms. A co-signer's
+per-request work is `commit` + `signShare` ≈ **5.1 ms against a 10 ms Worker
+limit**, before accounting for slower hardware — so `@qrst/server`'s Worker target
+must do signing inside a Durable Object (30 s of CPU per request) rather than in a
+Worker route. It is also a second argument for the one-round structure proposed
+against NKM §7.6: `aggregate` is the expensive half, and in that form the device
+performs it, leaving the server the cheap side.
 
 **scrypt at `log_n = 18` in a browser.** 256 MiB per guess is the point, but
 pure-JS scrypt at that size is tens of seconds and may simply fail on mobile

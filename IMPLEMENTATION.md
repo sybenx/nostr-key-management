@@ -25,11 +25,20 @@ is marketed as the product.
 package — the storage ladder is what a key does *after* it arrives, and shipping
 transfer without it means every adopter invents their own at-rest story.
 
-**Threshold signing (NKM §7) cannot be a single drop-in, ever.** FROST at
-`t = 2` with index 1 held by a server is not a client feature, it is a
-distributed system. A package implementing the device half is inert without a
-server to point at. So NKM §7 is two deliverables — a client and a reference server
-— and the honest framing is "run this, then enable that," not "install this."
+**Threshold signing (NKM §7) is FROSTR, and this repository ships neither
+client nor server for it.** NKM 10.0 adopted [bifrost](https://github.com/FROSTR-ORG/bifrost)
+and the `igloo` clients whole; there is no `@qrst/threshold` package to build,
+because the thing it would wrap already exists, is maintained elsewhere, and
+this library has no business forking it. What this library ships instead is
+narrower and more durable: §3.3's `frost-share` profile, which carries a
+FROSTR credential pair (`bfshare1…` + `bfgroup1…`) inside QRST's SAS-gated
+transfer instead of the plaintext QR FROSTR's own onboarding uses today. A
+FROST co-signer is still a distributed system that needs somewhere to run, but
+that somewhere is not this library's to build: [FROSTR-ORG/igloo-server](https://github.com/FROSTR-ORG/igloo-server)
+is the reference co-signer, self-hosted on a machine the user controls, and a
+Cloudflare Workers signer for people without one is its own repository under
+this project's org, not a package here. Neither NKM nor QRST specifies either
+server.
 
 **Native apps are a fourth thing.** A JavaScript package cannot serve the iOS and
 Android clients the specs are largely written for, and hand-writing Swift and
@@ -79,7 +88,7 @@ const event  = await keys.signer.signEvent(draft)
 `keys.signer` satisfies NIP-07 exactly, so `window.nostr = keys.signer` is a
 valid line of user code and every existing library keeps working. `keys.login()`
 is QRST Flow A — the browser is always the Receiver showing the QR, because a
-browser cannot scan reliably and, per NKM §7.1, is always `restricted` anyway.
+browser cannot scan reliably.
 
 Everything else is progressive disclosure on the same object, and none of it is
 required to log in:
@@ -88,18 +97,18 @@ required to log in:
 keys.storageLevel                     // 1 | 2 | 3, per NKM §2.1
 keys.lock                             // 'device' | 'launch' | `idle:${number}`
 keys.export({ password })             // NKM §4.1, always ncryptsec, privileged
-keys.backup.connect(url, password)    // NKM §7.2 → NKM §4.2
+keys.backup.connect(url, password)    // NKM §4.2
 keys.backup.recover(url, password)    // NKM §7.10 — throws in a browser, by spec
-keys.devices.list() / .remove(id)     // NKM §7.1, NKM §7.11
-keys.threshold.enable() / .disable()  // NKM §7.5, NKM §7.15 — trusted devices only
-keys.on('lock', s => …)               // NKM §7.16 states, for the indicator
-keys.on('alert', a => …)              // NKM §7.13 digests and alerts
+keys.devices.list() / .remove(id)     // local transfer records only, NKM §3.2 — not a protocol-level device list
+keys.threshold.enable() / .disable()  // hands off to FROSTR's own dealer/onboarding; not specified by NKM
+keys.on('frostr-peer-alert', a => …)  // surfaces whatever bifrost/igloo-core report; not an NKM construct
 ```
 
 Methods a browser may not perform are present on the type and reject at runtime
-with a named error (`RestrictedRoleError`) rather than being absent. A missing
-method reads as an incomplete library; a refusal citing NKM §7.13 teaches the
-integrator what the role system is for.
+with a named error (`UnsupportedInBrowserError`) rather than being absent — for
+instance `keys.backup.recover()`, which NKM §7.10 forbids in a browser
+outright. A missing method reads as an incomplete library; a refusal citing the
+specific requirement teaches the integrator why the limit exists.
 
 ### Tier 2 — headless
 
@@ -130,11 +139,11 @@ exactly one thing to reimplement and exactly one suite to prove it against.**
 
 | Package | Contains | Depends on |
 |---|---|---|
-| `@qrst/core` | Every derivation and state machine, as pure functions over injected randomness and clock. Commit/nonce/reveal and code derivation (QRST §6), URI parse and build (QRST §11.2), message construction and validation (QRST §11.4), Flow A/B state machines (QRST §7, §8), profile registry (QRST §5), blob-store key schedule (NKM §4.2), FROST wrappers, refresh algebra (NKM §7.9), epoch ordering. No I/O, no DOM, no `fetch`, no timers. | `@noble/curves`, `@noble/hashes`, `@scure/base` |
+| `@qrst/core` | Every derivation and state machine, as pure functions over injected randomness and clock. Commit/nonce/reveal and code derivation (QRST §6), URI parse and build (QRST §11.2), message construction and validation (QRST §11.4), Flow A/B state machines (QRST §7, §8), profile registry (QRST §5), blob-store key schedule (NKM §4.2), `frost-share` credential-pair verification (NKM §3.3) over bifrost's own bech32m encoder. No FROST signing or ECDH of its own — that stays inside bifrost, a peer dependency, not a wrapped one. No I/O, no DOM, no `fetch`, no timers. | `@noble/curves`, `@noble/hashes`, `@scure/base`, `@frostr/bifrost` (decode/verify only) |
 | `@qrst/web` | The adapters that make `core` run in a browser: storage per NKM §2.3, relay transport with the outbox of QRST §11.5, WebAuthn gate, `navigator.storage.persist()`, camera and fragment parsing. Exports `NostrKeys`. | `core` |
-| `@qrst/ui` | The screens the specs write copy for: QR with the direction line of QRST §11.2b, the code entry field with its visible length, the release prompt of QRST §9 with the origin as punycode, the lock indicator (NKM §7.16). Framework-free custom elements. | `web` |
+| `@qrst/ui` | The screens the specs write copy for: QR with the direction line of QRST §11.2b, the code entry field with its visible length, the release prompt of QRST §9 with the origin as punycode. Framework-free custom elements. | `web` |
 | `qrst-login` | Tier 0. One IIFE bundle, no build step for the adopter, sets `window.nostr`. | `ui` |
-| `@qrst/server` | The reference blob store (NKM §4.2) and co-signer (NKM §7.6) with the audit rules of NKM §7.13. One codebase, two targets: Cloudflare Worker and Node. | `core` |
+| `@qrst/server` | The reference **blob store only** (NKM §4.2) — one encrypted backup per identity, nothing else. Not a FROST co-signer: that role is [FROSTR-ORG/igloo-server](https://github.com/FROSTR-ORG/igloo-server) (self-hosted on a machine) or the Cloudflare Workers signer (a separate repository under this project's org, for people without one). Neither NKM nor QRST specifies either, so neither lives here. One codebase, two targets: Cloudflare Worker and Node. | `core` |
 | `@qrst/vectors` | Generates the normative test vectors from `core`; runs them as a conformance suite any implementation can execute. | `core` |
 
 `core` communicates with its host by returning **commands as data**, never by
@@ -144,7 +153,7 @@ calling out:
 type Command =
   | { t: 'publish';  relays: string[]; event: NostrEvent }
   | { t: 'subscribe'; filter: Filter }
-  | { t: 'store';    slot: 'nsec' | 'share' | 'E'; bytes: Uint8Array }
+  | { t: 'store';    slot: 'nsec' | 'bfshare'; bytes: Uint8Array }
   | { t: 'prompt';   kind: 'release' | 'accept' | 'privileged'; text: string; claims: Claims }
   | { t: 'expect-code'; length: 5 }
   | { t: 'zeroize';  handle: Handle }
@@ -173,7 +182,7 @@ nostr-key-management/
 │       ├── payload-ceiling.json
 │       ├── blob-store.json
 │       ├── ncryptsec.json
-│       └── frost.json
+│       └── frost-share-max.json
 ├── packages/
 │   ├── core/ web/ ui/ login/ server/ vectors/
 ├── examples/
@@ -225,9 +234,9 @@ through to the five digits; the payload ceiling at exactly the declared maximum,
 where NIP-44's power-of-two padding makes an off-by-one-chunk error invisible
 everywhere else; the NKM §4.2 ladder from password and salt through `K_pw`,
 `K_enc`, `K_auth`, `K_wrap` to a decryptable blob; `ncryptsec` at both `log_n`
-values; and for NKM §7, a full activation, one refresh, and a joint issuance with
-the parity case covered explicitly, since odd-y is where an independent
-implementation will first diverge.
+values; and the NKM §3.3 `frost-share` credential pair at its true maximum
+(`vectors/frost-share-max.json`), where a real dealt keyset is the only thing
+that catches an encoder that silently truncates a large group.
 
 **Event kinds.** They are provisional — chosen from the ephemeral range and
 verified non-conflicting, but unregistered until a NIP lands — so the mitigation is
@@ -253,48 +262,29 @@ budget; the multiple-responder notice; NKM §4.1 `ncryptsec` export (which is al
 `nostr-nsec`'s no-network path — the QRST §10 offline tier is profile-gated and
 `nostr-nsec` does not use it); NIP-07 signer; tier 0 bundle. No server, no account,
 nothing to run.
-Ships the first vector files. `vectors/nkm-frost.json` exists already and belongs
-in CI from this release, well before anything signs with a threshold key: it is
-the only thing that catches the NKM §7.4 parity trap, and it costs nothing to run
-against a build that does not use FROST yet.
+Ships the first vector files, including `vectors/frost-share-max.json` — it costs
+nothing to run in CI from this release even though nothing signs with a FROSTR
+key yet, since it only exercises the credential-pair encoding, not signing.
 
 **v0.2 — backup.** NKM §4.2 blob store, `@qrst/server` on a Worker, NKM §7.10
 recovery in a native context only, and the recovery-delay notices. The server is
-small and stateless and is what makes NKM §7 credible later.
+small, stateless, and is not a step toward anything threshold-related — it is
+the whole of what `@qrst/server` does; a FROST co-signer is a different
+project entirely (see §1).
 
-**v0.3 — device list.** NKM §7.1 enrollment keys, kind 30242, roles assigned by
-the Sender's consent box, per-device settings, the transfer records of NKM §3.2
-surfaced. Still no threshold; this is the bookkeeping NKM §7 needs and it has
-standalone value as a "where am I logged in" screen.
+**v0.3 — transfer history.** The local `transfer_event` records of NKM §3.2,
+surfaced as a "where has my key gone" screen. No protocol-level device list —
+that was this document's own 9.x construct and NKM 10.0 dropped it along with
+the threshold design it served (NKM §7.1).
 
-**v0.4 — threshold, device quorum first.** NKM §7.18 over NKM §7.4's ciphersuite
-and epoch records: a trusted dealer, unique per-device indices, one-round signing
-between two devices, threshold ECDH, and rotation. The largest step by a wide
-margin, and the one that should not start until v0.1–v0.3 have been used by
-somebody.
-
-Device quorum before co-signer, deliberately, and the reason is that **it has no
-server at all**: no Worker to deploy, no rows-written budget, no NKM §7.13 audit
-log, and none of NKM §7.9 step 4's distributed-destruction problem, because
-rotation is joint between the devices. NKM §7.18's own recovery paragraph accepts
-an `ncryptsec` or a printed code as the NKM §4 backup, so it does not drag NKM
-§4.2's blob store back in either. It is a pure client deliverable that exercises
-every primitive the co-signer mode also needs, which makes it the cheapest place
-to get the crypto layer wrong and find out.
-
-Two gaps have to be filled in code because the specification does not describe
-them (SPEC_ISSUES.md): NKM §7.15 disable reads "collect share 1 from a server" and
-there is none, so it becomes "collect `t − 1` other members' shares"; and NKM §7.14
-Offline mode and NKM §7.5a keep-key do not apply to this mode at all. Ship `t = 2`
-only.
-
-**v0.5 — co-signer.** NKM §7.1–NKM §7.17 and `@qrst/server`'s Worker target, once
-the crypto layer of v0.4 has a user. This is where the infrastructure plan lives,
-and §8 has the constraint that shapes it: signing runs in a Durable Object, not a
-Worker route. Under 9.0's replica-by-index scheme every device holds the same
-share, so `frost-share` issuance is one Sender, one Receiver, one payload (NKM
-§3.3), and no carve-out to QRST is required. The camera-less case uses copy-paste
-pairing (QRST §12.1) over relays.
+**v0.4 — `frost-share` support.** The QRST side of NKM §3.3: encode and decode
+the `bfshare1…`/`bfgroup1…` pair with bifrost's own encoder, run the P4/P5
+checks, and move the pair through Flow A/B or the passphrase-encrypted offline
+container. This library does not implement FROST signing, ECDH, peer policy,
+or rotation — an integrator brings `@frostr/bifrost` (or an `igloo` client) for
+that and uses this package only to get a share onto a new device without a
+plaintext QR. Small relative to what a v0.4 building an actual co-signer would
+have been, because that co-signer is no longer this project's to build.
 
 **1.0 — when the kinds are registered.**
 
@@ -303,58 +293,22 @@ pairing (QRST §12.1) over relays.
 ## 8. Risks, stated honestly
 
 **FROST in JavaScript — no longer the blocker this section used to describe.**
-`@noble/curves` 2.3.0 ships `schnorr_FROST`: RFC 9591 over the secp256k1 taproot
-ciphersuite NKM §7.4 names, with a trusted dealer, the RFC's own Appendix C.2
-`vss_verify`, `commit`/`signShare`/`verifyShare`/`aggregate`, and `combineSecret`.
-That is the construction the specification points at, in the language, in a
-library a Nostr client already depends on for BIP-340. It removes the Rust
-toolchain, the WebAssembly artifact and the second crypto dependency together, and
-costs **10.2 KB gzipped** on top of the `secp256k1.js` already shipped — against
-the few hundred kilobytes a compiled `frost-secp256k1-tr` was budgeted at.
-Verified end to end against an odd-y fixture — dealing, VSS, two-of-three signing,
-rotation, and rejection of a retained pre-rotation share — in
-`vectors/nkm-frost.json`.
-
-What has **not** been established is an audit. The earlier text asked for an
-"established, audited" implementation and this is not yet one; "exists, and is
-correct on our vectors" is the weaker claim, and it is the one that can honestly
-be made. Two things follow. Budget a review of the FROST path specifically rather
-than treating the dependency as settled. And keep `frost-secp256k1-tr` in the
-picture as the cross-implementation check the vectors are run against, which is
-the role it is actually good for — a second implementation agreeing on a known
-answer is worth more than either one being trusted alone.
-
-**The parity trap is invisible, and the vector is the only thing that catches
-it.** NKM §7.4 carries a dealer-side negation for odd-y keys that the taproot
-ciphersuite makes unnecessary, plus a re-negation on reconstruction that is
-actively wrong (SPEC_ISSUES.md). The reason it needs naming as an implementation
-risk and not only a specification one is that **nothing in the protocol detects
-it**: `nsec` and `n − nsec` serialise to the same x-only pubkey, sign identically
-under BIP-340, and derive the same NIP-44 conversation keys, so NKM §7.5's check of
-`group_pub` against the user's known pubkey passes either way and so does the
-share check beside it. A client that gets this wrong ships, works, and hands back
-a different `nsec1…` than the user wrote down, at NKM §7.15 disable — the one
-moment they are most likely to be moving between clients. Run the odd-y vector in
-CI; half the keyspace is even-y and will pass regardless.
-
-**`t = 3` cannot be implemented as NKM §7.18 states it.** The section offers it,
-and the epoch record has room for one coefficient commitment where a degree-2
-polynomial needs two — so the share check it specifies is false at every index of
-a real `t = 3` key set (`vectors/nkm-frost.json`, where those two `false` values
-are deliberate). Ship `t = 2` and refuse `t = 3` in the UI until the specification
-is fixed, and store the epoch record's commitment as an **array** from the first
-release even so: at `t = 2` it has one element and behaves identically, and the
-alternative is migrating every deployed epoch record later.
-
-**A signing round does not fit in a Cloudflare Worker's CPU budget.** Measured on
-Node / Apple Silicon, which is the generous end: `commit` 0.67 ms, `signShare`
-4.48 ms, `aggregate` 11.03 ms, `trustedDealer` 2-of-3 1.65 ms. A co-signer's
-per-request work is `commit` + `signShare` ≈ **5.1 ms against a 10 ms Worker
-limit**, before accounting for slower hardware — so `@qrst/server`'s Worker target
-must do signing inside a Durable Object (30 s of CPU per request) rather than in a
-Worker route. It is also a second argument for the one-round structure proposed
-against NKM §7.6: `aggregate` is the expensive half, and in that form the device
-performs it, leaving the server the cheap side.
+**FROST correctness, `t = 3`, the parity trap, and Cloudflare Worker CPU
+budgets for signing are no longer this repository's risks to carry.** All four
+were about a FROST implementation and a co-signer server this project would
+have built and audited itself; NKM 10.0 adopted FROSTR instead, so that
+correctness surface — dealing, VSS, signing, rotation, the odd-y parity
+behaviour, `t = 3`'s share-verification math — is `bifrost`'s (and, for a
+self-hosted co-signer, `igloo-server`'s) to get right and to document risk
+against, not this library's. `vectors/nkm-frost.json` remains in this
+repository as the historical record of the `t = 3` and parity findings that
+motivated the rotation proposal in NKM §7.9, but it tests a ciphersuite this
+document no longer specifies, and CI need not gate on it. The risk that
+replaces all four, and is this library's to own, is narrower: `@qrst/core`'s
+`frost-share` verification (NKM §3.3, P4) must reject a malformed or
+inconsistent `bfshare`/`bfgroup` pair using bifrost's real encoder, and
+`vectors/frost-share-max.json` is what checks that at the size boundary where
+an encoder is most likely to silently truncate.
 
 **scrypt at `log_n = 18` in a browser.** 256 MiB per guess is the point, but
 pure-JS scrypt at that size is tens of seconds and may simply fail on mobile
@@ -367,8 +321,7 @@ must be wired to a real capability probe rather than a user-agent guess.
 IndexedDB and calls `navigator.storage.persist()`, but persistence can be
 declined and eviction is real. Integrators will report this as data loss. The
 library should surface it as an explicit state (`keys.durability`) and the docs
-should say plainly that a browser is a device that can disappear — which is
-precisely why NKM §7 makes browsers `restricted` and re-enrollable.
+should say plainly that a browser is a device that can disappear.
 
 **The phishing residual is a library problem too.** QRST §15 is candid that a
 hostile party acting as Receiver is stopped only by a user declining the release
@@ -392,8 +345,9 @@ risks reintroducing the operator the whole design avoids. It should be a static
 file with a CI check that it makes no network calls.
 
 **Bundle size is an adoption gate.** Tier 0 competes with a script tag people add
-casually. Budget: base bundle under 60 KB gzipped with NKM §7 in a separate async
-chunk, enforced in CI, or the first bug report is "this doubled my bundle."
+casually. Budget: base bundle under 60 KB gzipped with `frost-share` verification
+(NKM §3.3) — the only piece that touches `@frostr/bifrost` at all — in a separate
+async chunk, enforced in CI, or the first bug report is "this doubled my bundle."
 
 ---
 
@@ -401,16 +355,20 @@ chunk, enforced in CI, or the first bug report is "this doubled my bundle."
 
 1. **npm scope.** `@qrst/*` matches the QRST name and is proposed throughout;
    availability is unverified. `@sybenx/*` is the fallback and needs no check.
-2. **Rust in the build**, for the FROST WASM path. Reasonable to defer to v0.4,
-   but it shapes the `core` API now: FROST calls should sit behind an async
-   interface from the first commit so the backend can change without a breaking
-   release.
+2. **`@frostr/bifrost` as a dependency of `core`'s `frost-share` verification
+   only.** No Rust, no WASM, no FROST implementation of this project's own —
+   settled by adopting FROSTR. What remains open is whether that dependency
+   sits behind an async interface from the first commit, the way a future
+   change of decoder library would want.
 3. **License.** The repository carries one; packages should state it explicitly
    per-package, and it is worth confirming it is the license you want on code as
    well as on prose.
-4. **Whether NKM §7's server is in scope for you at all.** A specification can name a
-   server and let others build it. A library that promises NKM §7 and ships no server
-   is stuck. Deciding now changes the v0.2 milestone.
+4. **~~Whether NKM §7's server is in scope for you at all.~~ Settled: it is not.**
+   NKM 10.0 specifies neither a FROST co-signer nor its infrastructure.
+   [FROSTR-ORG/igloo-server](https://github.com/FROSTR-ORG/igloo-server) is the
+   reference co-signer for a self-hosted machine; a Cloudflare Workers signer
+   for people without one is its own repository under this project's org. Both
+   are out of scope for this repository.
 5. **What relationship this has to the existing client.** An implementation
    already exists and is where the notes that shaped these specs came from.
    Whether the library is extracted from it, written beside it, or never written

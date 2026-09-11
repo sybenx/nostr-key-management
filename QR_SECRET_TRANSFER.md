@@ -1,6 +1,6 @@
 # QR Secret Transfer — Specification
 
-Version 1.4-draft
+Version 1.5-draft
 Applies to: any two devices moving a secret between them under user supervision
 
 Key words MUST, MUST NOT, SHOULD, MAY are normative.
@@ -992,13 +992,16 @@ source of the commit-then-reveal construction of §6, by way of Matrix.
 
 ## Status
 
-Version 1.4-draft. 1.3 added the `frost://` scheme and the light returned-secret
-flow of §12.3; 1.4 restores the offline tier (§10) as a profile-gated,
+Version 1.5-draft. 1.3 added the `frost://` scheme and the light returned-secret
+flow of §12.3; 1.4 restored the offline tier (§10) as a profile-gated,
 passphrase-encrypted fallback — `frost-share` permits it, `nostr-nsec` does not
-(it has `ncryptsec`). Two things are still open: the event kinds of §11.4 are
-provisional — chosen from the ephemeral range and verified non-conflicting
-(2026-09-02), but not yet reserved by a NIP — and the test vectors are incomplete:
-the SAS of §6 is covered in `vectors/`, but the one at the declared payload maximum
-that P1 requires is not.
+(it has `ncryptsec`). 1.5 adds §16, a non-normative note on how this mechanism
+composes with the echo of FROSTR — the threshold-signing protocol
+[NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md) adopted in its own 10.0 — and
+closes the P1 payload-ceiling vector gap using `frost-share`'s real credential
+pair (`vectors/frost-share-max.json`). Two things are still open: the event
+kinds of §11.4 are provisional — chosen from the ephemeral range and verified
+non-conflicting (2026-09-02), but not yet reserved by a NIP — and a §11.4
+gift-wrap timing vector exists but is not yet normative (`vectors/README.md`).
 
 Implementation has begun. Review is more useful than deployment at this stage.

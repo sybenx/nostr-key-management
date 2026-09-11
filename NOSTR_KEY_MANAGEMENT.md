@@ -1,6 +1,6 @@
 # Nostr Key Transfer & Storage — Specification
 
-Version 9.2-draft
+Version 10.0-draft
 Applies to: any client that holds a user's nsec (web, desktop, mobile)
 
 > Transfer is specified in [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md) (QRST).

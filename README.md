@@ -16,10 +16,12 @@ device makes you type a five digit code shown on the receiving device, which is
 what stops somebody sitting in the middle. It carries nsec identities, FROST
 shares, and anything else a profile defines.
 
-**[NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md)** is storage, backup, and
-optional FROST threshold signing. It registers the two payload profiles the
-transfer spec uses: `nostr-nsec` for a whole identity key, and `frost-share` for
-a single threshold share.
+**[NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md)** is storage and backup. It
+registers the two payload profiles the transfer spec uses: `nostr-nsec` for a
+whole identity key, and `frost-share` for a single threshold share. Threshold
+signing itself is not specified here — it's [FROSTR](https://github.com/FROSTR-ORG/bifrost),
+adopted whole; this project's own contribution is getting a share to a new
+device without a plaintext QR.
 
 The point of all this is to be better than copy-pasting an nsec between apps, and
 better than leaving one in a notes file. Storage is upgraded to whatever the
@@ -30,21 +32,18 @@ giving something up, it is picked for them.
 ## Why this is not NIP-46
 
 NIP-46 is a signing protocol for a remote signer that holds the whole key and must
-be reachable for every signature. This project's threshold signing comes in two
-modes that each improve on something real (NKM §7):
+be reachable for every signature. FROSTR improves on that structurally: any
+threshold of peers signs together, none holds a usable key alone, and a
+compromised peer neither reconstructs nor forges by itself. A configuration with
+a server as one peer among your own devices gets the NIP-46 shape made strictly
+better — the server never holds your whole key — without this project having to
+build or specify that server; a configuration with no server at all, any two of
+your own devices, is the thing NIP-46 structurally cannot do regardless.
 
-- **Device quorum** — a serverless 2-of-N across your own devices. Any two sign; no
-  server exists; nobody in the middle sees anything. This is the thing NIP-46
-  structurally cannot do, and it's the upgrade to copy-pasting your nsec between your
-  devices.
-- **Co-signer** — a server holds one share, your device the other. This *is* the
-  NIP-46 shape, made strictly better: the server never holds your whole key, and a
-  breached server can neither reconstruct alone nor forge (it can't complete a
-  signature without one of your devices).
-
-NIP-46 also does not specify a key transfer method, nor how to store a key, whether
-it is backed up, or what happens when the machine is lost. This project fills those
-gaps too.
+NIP-46 also does not specify a key transfer method, nor how to store a key,
+whether it is backed up, or what happens when a device is lost. This project
+fills those gaps — and, for FROSTR specifically, replaces its plaintext QR
+handoff with one gated by a typed code and end-to-end encryption (NKM §3.3).
 
 ## What this project is not
 
@@ -54,17 +53,23 @@ is running it over infrastructure nobody operates for the purpose.
 
 ## Status
 
-QR_SECRET_TRANSFER.md is version 1.4-draft: the `frost://` scheme and light
-returned-secret flow (§12.3) for revocable shares, plus a profile-gated offline
-tier (§10) — passphrase-encrypted, no relay. The event kinds are provisional —
-chosen from the ephemeral range and verified non-conflicting, but not yet reserved
-by a NIP — and the test vectors are incomplete: the §6 short code is covered in
-[vectors/](vectors/), the payload ceiling that P1 requires is not.
+QR_SECRET_TRANSFER.md is version 1.5-draft: the `frost://` scheme and light
+returned-secret flow (§12.3) for revocable shares, a profile-gated offline tier
+(§10) — passphrase-encrypted, no relay — and a non-normative note (§16) on how
+this mechanism composes with FROSTR's own echo. The event kinds are
+provisional — chosen from the ephemeral range and verified non-conflicting, but
+not yet reserved by a NIP — and one test vector remains incomplete: the §11.4
+gift-wrap timing vector (the §6 short code and the §4/P1 payload ceiling are
+both covered in [vectors/](vectors/)).
 
-NOSTR_KEY_MANAGEMENT.md is version 9.2-draft: the serverless device-quorum
-threshold mode (§7.18) alongside the server co-signer, and a passphrase-encrypted
-offline container for `frost-share` (§3.3), the one payload with no `ncryptsec` of
-its own.
+NOSTR_KEY_MANAGEMENT.md is version 10.0-draft: it stops specifying its own
+threshold-signing protocol and adopts [FROSTR](https://github.com/FROSTR-ORG/bifrost)
+whole. `frost-share` (§3.3) now carries a FROSTR credential pair — a
+`bfshare1…` and its `bfgroup1…` — instead of a bespoke encoding, still with a
+passphrase-encrypted offline container for the no-transport case. §7 keeps only
+what FROSTR does not have: a rotation construction and a recovery-delay
+obligation, both offered to FROSTR as proposals rather than specified for this
+project's own clients.
 
 This project benefits from devs and users pressure testing the claims of the
 spec. Failure modes will be handled within reason to improve it. Structural

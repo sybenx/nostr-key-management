@@ -42,32 +42,36 @@ always ask, and that permission lasts for exactly one transfer.
 code, or a server. Skippable, and if you skip it the app never nags — the status
 just sits in settings.
 
-**Threshold signing (optional), in two flavours.** Splitting the key so no single
-device or site holds a usable copy comes two ways, and you pick the one that
-matches what you have:
+**Threshold signing (optional).** Splitting the key so no single device or site
+holds a usable copy is [FROSTR](https://github.com/FROSTR-ORG/bifrost) — a
+threshold-signing protocol and a family of apps (`igloo`) this project adopts
+rather than builds. Any threshold of peers signs together; none holds a usable
+key alone. Two shapes cover most setups:
 
-- **Device quorum.** Your key lives split across *your own devices*; any two of them
-  sign together, and no server is involved at all. Nobody in the middle, nothing to
-  be reachable but your devices. The trade: two devices present to post, and removing
-  one re-keys the rest. This is the real upgrade to copy-pasting your nsec between
-  your devices.
-- **Co-signer.** A server you (or someone) runs holds one piece; your device holds
-  the other; every signature needs both. This is what lets you log in on the web and
-  cut off any device instantly — and unlike a remote signer, the server never holds
-  your whole key and a breach of it can't post as you. The trade: the server must be
-  reachable, and it sees what you post. This is the upgrade to a remote signer or a
-  browser extension.
+- **All your own devices.** Any two (or more) of them sign together, and no
+  server is involved at all. Nobody in the middle, nothing to be reachable but
+  your devices. The trade: two devices present to post, and removing one means
+  redoing the split. This is the real upgrade to copy-pasting your nsec
+  between your devices.
+- **A server as one of the peers.** A server you (or someone) runs holds one
+  piece; your device holds another; a signature needs both. This is what lets
+  you log in on the web and cut off any device instantly — and unlike a remote
+  signer, the server never holds your whole key and a breach of it can't post
+  as you. The trade: the server must be reachable, and it sees what you post.
 
-Both make it possible to actually revoke a device; both keep any one site or device
-from holding a usable key.
+Both make it possible to actually revoke a device; both keep any one site or
+device from holding a usable key. This project's own part in either shape is
+narrow: getting a share onto a new device without the plaintext QR scan
+FROSTR's own apps use today.
 
-**Recovery.** With a co-signer, it's the server address and a password, and if
-threshold mode is on there's a delay — a day by default — during which your other
-devices are told a recovery started and can approve or cancel it; with no devices
-left, the delay just passes. A device quorum has no server to recover from: two
-surviving devices already are the key, and below that you restore the backup you
-were offered at setup — which is why, in that mode, skipping the backup makes your
-devices the only copy.
+**Recovery.** This project's own recovery — a server address and a password,
+independent of whether FROSTR is in use — has a delay, a day by default,
+during which your other devices are told a recovery started and can approve or
+cancel it; with none reachable, the delay just passes. If FROSTR is in use, a
+successful recovery puts the whole key back in one place while every peer's
+share is still live elsewhere, which this project treats as unfinished: the
+key isn't ready to use again until you re-split it with FROSTR, discarding
+every pre-recovery share.
 
 ## What's underneath
 
@@ -83,26 +87,30 @@ for another mid-transfer.
 
 **Storage.** A ladder, probed silently, strongest rung that works.
 
-**Server (optional).** Holds an encrypted backup of the key, and in co-signer mode
-one share — never the whole key. The backup is protected by a password of the
-user's choosing, and the setup screen says plainly that if the server is breached,
-that password is the only thing left. Device-quorum mode uses no server at all.
+**Server (optional).** Holds an encrypted backup of the key, and where a server is
+one of the FROST peers, one share — never the whole key. The backup is protected
+by a password of the user's choosing, and the setup screen says plainly that if
+the server is breached, that password is the only thing left. A device-only
+threshold setup uses no server at all.
 
 **Threshold signing.** FROST over the same signature scheme Nostr already uses, so
-signatures look ordinary to everyone else. Any two shareholders sign; the key is
-never reassembled to do it. In device-quorum mode the two are two of your devices;
-in co-signer mode they are a device and the server. Removing a device re-keys the
-others (a rotation), which is what makes revocation real.
+signatures look ordinary to everyone else. Any threshold of peers signs together;
+the key is never reassembled to do it — sometimes that's two of your own devices,
+sometimes a device and a server, sometimes more of either. This is FROSTR's own
+mechanism, not something this project builds; what this project adds is a way to
+neutralise a departed or compromised peer's retained share without reassembling
+the key to do it (a rotation proposal, since FROSTR doesn't have one yet), which
+is what makes revocation real rather than just a request for good behaviour.
 
-**Why the co-signer beats a remote signer on its worst day.** A remote signer or a
+**Why a FROST peer beats a remote signer on its worst day.** A remote signer or a
 browser extension holds your *whole key* — breach it once and the attacker has
-everything and can post anything. The co-signer holds one share: breach it and the
-attacker gets something that is **not your key, can't sign on its own** (it can't
-complete a signature without one of your devices), **and can't impersonate you**.
-To actually reconstruct they'd have to breach one of your devices too — two
-independent compromises instead of one. That's strictly better than every option
-Nostr gives you today, on the exact surface (an always-online server) those options
-are worst on.
+everything and can post anything. A FROST peer holds one share: breach it and the
+attacker gets something that is **not your key, can't sign on its own** (it needs
+a threshold of the other peers too), **and can't impersonate you**. To actually
+reconstruct they'd have to breach enough other peers too — independent
+compromises instead of one. That's strictly better than every option Nostr gives
+you today, on the exact surface (an always-online server) those options are worst
+on.
 
 ## What this protects against, and what it doesn't
 
@@ -118,13 +126,12 @@ otherwise:
   site can behave correctly for everyone who reviews it and act only against one
   chosen person, so reputation is the wrong instrument. The only structural
   answer is not giving a website a usable key, which is what threshold mode is.
-- **Two shareholders who collude.** In any threshold scheme, any two who together
+- **Shareholders who collude.** In any threshold scheme, any peers who together
   meet the threshold can reconstruct the key by simply exchanging their pieces —
-  there's no protocol step to log or refuse; it's what "threshold" means. In
-  co-signer mode that pair is the server plus any one device; in device-quorum mode
-  it's any two of your devices. Device quorum is the configuration where both
-  colluders would have to be your own hardware — which is why its shares only ever
-  go on devices you own.
+  there's no protocol step to log or refuse; it's what "threshold" means. Where
+  a server is one of the peers, that group includes it; where every peer is your
+  own device, both (or all) colluders would have to be your own hardware — which
+  is why a device-only setup's shares only ever go on devices you own.
 - **A compromised device you're already using.** Same as any wallet.
 - **Being wrong about the mathematics.** Every other failure has a fallback. This
   one doesn't, and because a Nostr key *is* the identity, there's no rotation in
@@ -145,6 +152,7 @@ becomes interesting.
 
 - [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md) — the transfer mechanism.
   Self-contained; start here.
-- [NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md) — storage, backup, threshold
-  signing, and the two payload profiles.
+- [NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md) — storage, backup, the two
+  payload profiles, and this project's proposals to FROSTR (rotation, recovery
+  delay). Threshold signing itself is specified by FROSTR, not here.
 - [SPEC_ISSUES.md](SPEC_ISSUES.md) — disagreements and suspected errors.

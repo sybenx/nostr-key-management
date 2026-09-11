@@ -67,11 +67,18 @@ FROSTR's own apps use today.
 **Recovery.** This project's own recovery — a server address and a password,
 independent of whether FROSTR is in use — has a delay, a day by default,
 during which your other devices are told a recovery started and can approve or
-cancel it; with none reachable, the delay just passes. If FROSTR is in use, a
-successful recovery puts the whole key back in one place while every peer's
-share is still live elsewhere, which this project treats as unfinished: the
-key isn't ready to use again until you re-split it with FROSTR, discarding
-every pre-recovery share.
+cancel it; with none reachable, the delay just passes. That window is the point:
+before it elapses somebody holding a share can stop a recovery they didn't ask
+for, and afterwards there is nothing left to stop.
+
+If your key is split across a FROSTR group, a completed recovery puts the whole
+thing back in one place while every share is still live elsewhere — and nothing
+undoes that. Splitting it again doesn't: the old shares still add up to the same
+key, because the key is the identity and Nostr has no way to change it. So the
+honest position is that recovery ends the split rather than repairing it, and
+the people holding shares deserve to be told it happened. This project treats a
+recovered key as unfinished business until you've decided which one survives:
+the new copy, or the group.
 
 ## What's underneath
 

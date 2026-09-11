@@ -494,7 +494,9 @@ behaviour it already has, plus a short migration note:
 - **§7.1** — how the enrollment-keypair-and-device-list model this document
   used to define maps onto FROSTR's own peer identities, for a client migrating
   off it.
-- **§7.9 Rotation** — a delta-polynomial construction FROSTR does not have.
+- **§7.9 Rotation** — the half of rotation FROSTR is missing. `bifrost-rs` can
+  already import a replacement share set; nothing in the ecosystem produces one
+  without reconstructing the whole key first.
 - **§7.10 Recovery delay** — an obligation FROSTR's wire protocol has no
   channel to carry, because reconstructing an nsec is a whole-group event and
   every FROSTR message is per-peer.
@@ -503,133 +505,242 @@ behaviour it already has, plus a short migration note:
 
 Prior versions of this document specified a per-device **enrollment keypair**
 `E`, a device list (kind 30242, `d = "devices"`), and an admission step gating
-which `E.pub` a co-signer would answer. FROSTR needs none of it: a group's
+which `E.pub` a co-signer would answer. FROSTR needs none of it. A group's
 members are the `{index, pubkey}` entries already carried in its `bfgroup1…`
-(§3.3), a peer's identity **is** that pubkey, and whether a group answers a
-given peer's `/sign`, `/ecdh` or `/ping` requests is a client-local **peer
-policy** — bifrost's `PeerConfig`/`PeerPolicy`, exposed by `igloo-core`'s
-`policy.ts` — an allow-list a trusted device edits directly, not a Nostr event
-this document defines.
+(§3.3), where `pubkey` is the member's own point `share_i·G` in 33-byte
+compressed form, and the peer's Nostr address is the x-only form of that same
+point (`get_pubkey(share.seckey, 'bip340')`, `src/class/signer.ts`). Whether a
+group answers a given peer's `/sign`, `/ecdh` or `/ping` requests is a
+client-local **peer policy** — bifrost's `PeerConfig`/`PeerPolicy`, exposed by
+`igloo-core`'s `policy.ts` — an allow-list a trusted device edits directly, not
+a Nostr event this document defines.
 
-A client migrating off the old design maps: `E.pub` → the peer's member pubkey;
-admission → adding that pubkey to peer policy; revocation short of rotation →
-removing it. The property that mattered before still holds under the new name:
-peer policy gates a group *answering* a peer, not what that peer already holds.
-**It does not undo a reconstruction.** An intercepted share plus one other
-member's share is the group secret regardless of policy, which is exactly why
-§3.3 exists — to keep the share from being intercepted in the first place.
+A client migrating off the old design maps: `E.pub` → the x-only form of the
+peer's member pubkey; admission → adding that pubkey to peer policy; revocation
+short of rotation → removing it.
+
+**Two things do not survive that mapping, and a migrating client should know
+which.** The old `E` was deliberately *separate* from the share, and that
+separation is what made revocation two-tier: revoking `E` took effect at once
+and without touching a share. In FROSTR the two are one object — the share
+secret is also the peer's identity and its transport key (§7.9) — so there is
+no credential to revoke on its own, and no way to change a peer's identity
+without rotating its share. Nor is the first tier enforced at a chokepoint any
+more: with no server whose refusal is authoritative, peer policy is each peer's
+own decision, so it is only as effective as the least-updated peer.
+
+What does survive is the property that mattered: peer policy gates a group
+*answering* a peer, not what that peer already holds. **It does not undo a
+reconstruction.** An intercepted share plus `t − 1` others is the group secret
+regardless of policy, which is exactly why §3.3 exists — to keep the share off
+a channel where it can be intercepted at all.
 
 ### 7.9 Rotation (proposal to FROSTR)
 
-Bifrost has no rotation primitive. Nothing in `bifrost/src` or its docs
-computes a new share set from an old one — grepping either for "rotat" turns
-up nothing in `src`, and exactly one hit in
-[`docs/SECURITY.md`](https://github.com/FROSTR-ORG/bifrost/blob/main/docs/SECURITY.md#key-management):
-an open checklist item, "Rotate shares periodically if the protocol supports
-it." FROSTR's own apps rotate the only way the ecosystem currently offers:
-reconstruct the nsec from `t` shares (`igloo-core`'s
-`recoverSecretKeyFromCredentials`) and re-run the dealer — what igloo desktop's
-"Recover" flow does. That works, but it puts the whole nsec back in one place
-to do it: the exact exposure a threshold scheme exists to avoid, for the
-common case of one member leaving or being compromised rather than every
-member being lost.
+**What FROSTR has today.** Nothing in `bifrost/src` computes a new share set
+from an old one: grepping it for "rotat" returns nothing, and its docs return a
+single hit — an open checklist item in
+[`docs/SECURITY.md`](https://github.com/FROSTR-ORG/bifrost/blob/main/docs/SECURITY.md#key-management),
+"Rotate shares periodically if the protocol supports it." The Rust rewrite has
+built the *host* half already: `bifrost-rs`'s
+`finalize_rotation_update_import` (`crates/bifrost-profile/src/flows/rotation.rs`)
+swaps a profile onto a replacement share set and journals the swap so a crash
+mid-rotation is detectable afterwards. It takes that replacement as an
+argument, and enforces exactly two invariants on it — the replacement group
+package's `group_pk` MUST equal the current one's, and the replacement share
+secret MUST differ (the profile id is derived from it). Those are precisely the
+two properties the construction below provides. What is missing is upstream of
+that call: the part that *produces* a replacement.
 
-This section proposes the alternative: a **delta-polynomial rotation** that
-produces a new `bfgroup`/`bfshare` set with the same group public key, in
-which no party ever holds the full delta, let alone the group secret. It is
-offered to FROSTR as a primitive it can adopt, not a description of behaviour
-bifrost has today.
+The only thing that produces one today is reconstruction. igloo desktop's
+**Recover** screen calls `recoverSecretKeyFromCredentials` to rebuild the whole
+nsec from `t` shares (`igloo-desktop/src/components/Recover.tsx`), and **Create**
+re-deals a fresh keyset from it (`generateKeysetWithSecret`,
+`src/components/Create.tsx`). For the case that pair was built for — shares lost
+down to the threshold — it is the only thing that can work. For the ordinary
+case, one member leaving or one device compromised, it puts the entire nsec back
+on one screen in order to retire one share.
 
-Any `t` current members form the rotating quorum (relabelled `1..t`
-for this round). The group secret, `a_0`, is untouched; only the polynomial's
-higher coefficients move, and every member — quorum or not — gets its share
-updated:
+**The construction.** Re-randomising a sharing requires no secret material and
+no threshold. A delta polynomial with a zero constant term leaves `a_0` — and
+therefore `group_pk`, and therefore the npub — untouched, while moving every
+member's share onto a new polynomial:
 
 ```
-Each quorum member k independently:
-  δ_k(x) = Σ_{j=1}^{t-1} r_{k,j}·x^j,   every r_{k,j} ← fresh random mod n,  δ_k(0) = 0
-  commitments_k[j] = r_{k,j}·G           for j = 1..t-1
-  broadcasts commitments_k[*] to the whole group, and δ_k(i) privately to every member i
+δ(x) = Σ_{j=1}^{t-1} r_j·x^j          δ(0) = 0, so the group secret never moves
 
-Every member i (quorum or not):
+Each contributor k (see "who contributes" below):
+  δ_k(x)            = Σ_{j=1}^{t-1} r_{k,j}·x^j    fresh random r_{k,j}, one per coefficient
+  commitments_k[j]  = r_{k,j}·G                    for j = 1..t-1
+  publishes commitments_k[*] to every member
+  sends δ_k(i) to member i, and to member i alone
+
+Each member i, for each contributor k:
+  verify δ_k(i)·G == Σ_{j=1}^{t-1} commitments_k[j]·i^j     // names a faulty contributor
+then:
   δ(i)                = Σ_k δ_k(i)
-  commitments[j]       = Σ_k commitments_k[j]                     // public; anyone can sum it
-  new_share_i          = old_share_i + δ(i)
-  new_member_pubkey_i  = old_member_pubkey_i + Σ_{j=1}^{t-1} commitments[j]·i^j
-  verifies new_share_i·G == new_member_pubkey_i before accepting
-new_group_pk = old_group_pk                                       // every δ_k(0) = 0
+  commitments[j]      = Σ_k commitments_k[j]                // public; anyone can sum it
+  new_share_i         = old_share_i + δ(i)
+  new_member_pubkey_i = old_member_pubkey_i + Σ_{j=1}^{t-1} commitments[j]·i^j
+  new_group_pk        = old_group_pk
 ```
 
-This is the SPEC_ISSUES.md `t = 3` fix, carried over from this document's prior
-threshold design and applied from the start rather than patched in afterward:
-`commitments` is an **array**, one entry per non-constant coefficient, so the
-verification generalises to any `t` instead of hard-coding a single `·2` term;
-**every** `r_{k,j}` is freshly random — one per contributor per coefficient,
-not one shared value — so no single quorum member's contribution determines
-the delta; and `δ_k(0) = 0` for every contributor, so the group secret, and
-hence `group_pk` and the identity's npub, is provably unchanged by rotation.
-A member outside the rotating quorum verifies its own new share against the
-publicly summed `commitments` before accepting it — exactly the generalised
-check the prior `t = 3` design needed and did not have.
+Nobody needs a share to compute a delta: `δ_k(i)` depends only on `i` and the
+contributor's own coefficients, never on `f`. A rotation can therefore be run by
+a single online device, which is the practical difference from
+reconstruct-and-re-deal — that needs `t` members present *and* assembles the
+nsec; this needs neither.
 
-1. Any `t` current members agree to rotate — on revocation, on a schedule, or
-   after §7.10 recovery.
-2. Each independently draws its own `δ_k`, publishes `commitments_k[1..t-1]`,
-   and sends `δ_k(i)` to every member `i` over FROSTR's own encrypted peer
-   channel. No new transport or message format is needed for this.
-3. Every member sums what it received into `δ(i)`, verifies, and adopts
-   `new_share_i`; the quorum publishes a fresh `bfgroup1…` naming the (possibly
-   changed) member list, and every member re-encodes its own `bfshare1…` at
-   its unchanged index.
-4. A member being revoked is simply excluded from step 2's per-member
-   delivery. Its retained old share pairs with nothing after this round.
-5. A member who misses the round and reappears later must be handed its own
-   `δ(i)` before it can sign again — it is on the old polynomial until then.
+This carries the `t = 3` fix from SPEC_ISSUES.md, applied from the start rather
+than patched in later. `commitments` is an **array**, one entry per non-constant
+coefficient, so verification generalises to any `t` instead of hard-coding a
+single `·i` term; every `r_{k,j}` is drawn fresh, one per contributor per
+coefficient; and because the commitments cover only `j ≥ 1`, a member's check
+also proves `δ(0) = 0` — a delta that moved the group secret cannot satisfy it.
 
-A client that needs rotation before FROSTR ships one has the same two options
-available today: reconstruct and re-deal (igloo desktop's "Recover"), accepting
-the full-key exposure that implies, or wait.
+**Who contributes, and why more than one.** One contributor is sufficient for
+correctness and already achieves the immediate goal: a share retired before the
+rotation no longer pairs with anything after it. More than one contributor buys
+a different property. If a single party knows `δ` in full, then any share from
+before the rotation can be converted into the matching share from after it, so
+an attacker collecting shares across epochs is back to needing `t` *ever*
+instead of `t` *within one epoch* — which is the whole point of rotating.
+Contributions compose: an attacker must learn every contributor's `δ_k` to
+link the two epochs, so every member that will remain SHOULD contribute, and a
+client MUST NOT present a single-contributor rotation as providing cross-epoch
+protection.
+
+For the same reason, `δ_k(i)` MUST be sent confidentially and to one member
+only. It is not share material and reads as harmless, but any `t − 1` of the
+increments, plus the `δ(0) = 0` that everybody knows, interpolate `δ` entirely.
+Bifrost's per-peer channel (ECDH to the recipient, ChaCha20-Poly1305) already
+satisfies this; a broadcast of the same values would not.
+
+**What rotating a share does to a live bifrost node.** This is the part a
+proposal has to get right, because in bifrost a share secret is not only a share:
+
+- **It is the member's identity in the group package.** `recover_secret_key`
+  checks `get_pubkey(share.seckey, 'ecdsa')` against `group.members[].pubkey`
+  (`src/lib/util.ts`), so the member entry is exactly `new_member_pubkey_i`
+  above. The member list is rewritten by a rotation; indices are not, and need
+  not be — `idx` is a 4-byte number with no contiguity requirement, and Lagrange
+  interpolation is indifferent to which distinct values are used.
+- **It is the peer's Nostr address.** A signer's pubkey is
+  `get_pubkey(share.seckey, 'bip340')` (`src/class/signer.ts`), the x-only form
+  of that same point. Rotating a share therefore moves every peer to a new
+  address: subscriptions, `p` tags and every peer-policy entry keyed by pubkey
+  (§7.1) move with it.
+- **It is the transport key.** Message encryption derives from
+  `get_shared_secret(share.seckey, peer_pubkey)`, so every pairwise channel
+  rekeys at the same moment.
+- **It changes the group id.** `gid = SHA256(group_pk ‖ threshold ‖ member
+  pubkeys sorted by idx)` (`src/lib/group.ts`). `group_pk` is unchanged by
+  construction, but the member pubkeys are not, so the `gid` — and every `sid`
+  derived from it — changes. A peer still holding its pre-rotation share
+  computes a different `gid` and is refused as `invalid_gid`; it does not
+  degrade, it disappears.
+- **It invalidates every outstanding nonce.** Secret nonces are HMAC-derived
+  from the share secret (`derive_secret_nonce(share_secret, code)`,
+  `src/lib/nonce.ts`), so a code a member issued before the rotation re-derives
+  to different points afterwards and fails `verify_nonce`. Both pools MUST be
+  dropped on rotation and replenished by `/ping`; signing MUST NOT be attempted
+  against a pre-rotation nonce.
+
+None of this needs a new message type — the increments and commitments fit the
+existing encrypted peer channel — but all of it needs to happen together.
+
+**Procedure.** Because the `gid` changes, a half-applied rotation does not
+leave a degraded group; it leaves two groups that cannot address each other.
+The ordering is therefore load-bearing:
+
+1. Contributors draw their `δ_k`, publish `commitments_k[1..t-1]`, and send each
+   member its own `δ_k(i)`. A member being retired is simply not sent one.
+2. Each member verifies every contributor's increment against that
+   contributor's commitments, sums the verified increments, and computes
+   `new_share_i` and `new_member_pubkey_i`. A member that cannot verify
+   **MUST** abort and keep its old share; the rotation has failed, and it
+   failed for a named contributor.
+3. Only once every remaining member has confirmed its new share does the group
+   adopt the new `bfgroup1…`. A member MUST NOT delete its old share before it
+   has stored and verified the new one, and a client SHOULD keep the old share
+   until adoption is confirmed, since until then the old `gid` is the live one.
+4. On adoption: each member re-encodes its own `bfshare1…` at its unchanged
+   index, drops both nonce pools, re-subscribes at its new pubkey, and rewrites
+   peer-policy entries to the other members' new pubkeys.
+5. A member that misses the round is stranded in a specific way worth stating,
+   because the obvious repair does not work. It is still listening at its old
+   address, so a contributor that kept `δ_k(i)` can in principle deliver it
+   there — but every other member's pubkey has changed too, so the stranded
+   member sees only unrecognised senders and its own peer policy refuses them
+   as `unauthorized`, while its own requests carry the pre-rotation `gid`.
+   Either the rotation is held open until it returns, or it is re-onboarded
+   rather than repaired: delivered a fresh `frost-share` pair (§3.3) by the
+   surviving members, out of band, exactly as a new member would be.
+
+**What rotation does not do.** It is forward-only. An attacker who already held
+`t` shares from a single epoch has the group secret and rotating does not take
+it back; what rotation removes is the ability to combine shares taken in
+different epochs. And a contributor can hand its own `δ_k` to a retired member,
+exactly as a member can hand over its share — rotation redistributes trust, it
+does not manufacture any.
 
 ### 7.10 Recovery delay (proposal to FROSTR)
 
 Recovery from all devices lost is unaffected by adopting FROSTR: it is still
 §4.2, the passkey-or-passphrase blob-store recovery this document has always
 specified, independent of whether the identity's signing authority happens to
-be split across a FROSTR group at the time. §4.2's delay already exists for
-the reason threshold mode makes sharper: the passphrase branch is phishable,
-and it is the one an attacker can reach without stealing anything a device
-holds.
+be split across a FROSTR group at the time. §4.2's delay already exists for the
+reason threshold mode makes sharper: the passphrase branch is phishable, and it
+is the one an attacker can reach without stealing anything a device holds.
 
 What FROSTR changes is what a completed recovery *means*. A recovered nsec is
 the group secret, reconstructed in full, on a device that is not a member of
-the group it came from. Every existing `bfshare` — held by every honest member
-exactly as before — is now paired with a group secret that also exists,
-complete, somewhere else. Rotation (§7.9) is what closes that gap, but bifrost
-has no channel that tells a group's members a recovery happened at all: its
-wire protocol carries `/sign`, `/ecdh`, `/ping`, `/echo` and `/onboard`, and
-none of them means "the secret you hold a share of now also exists whole
-elsewhere." A member never told keeps signing normally, unaware its share is
-one reconstruction away from redundant.
+the group it came from. Every existing `bfshare` is now a share of a key that
+also exists whole, somewhere else.
 
-This section proposes that the notice §4.2 already sends on a password-branch
-recovery — `RECOVERY_NOTICE` (kind 24316) — MUST also reach every pubkey in the
-group's `bfgroup1…` member list wherever the recovering client can name one
-(a prior `ncryptsec` export, a cached group package, or the user naming it
-directly), and that a client completing such a recovery MUST treat the
-identity as **rotation-pending**: it MUST NOT present the recovered nsec as
-ready for ordinary use until the user either runs FROSTR's dealer to produce a
-fresh group — discarding every pre-recovery share — or confirms there was no
-group to begin with. Passkey-branch recovery, which releases without a delay
-because there is no phishing path to delay against (§4.2), carries the same
-obligation without the delay: immediate notice, the same rotation-pending
-state.
+**Nothing in FROST repairs that, and this section must not imply otherwise.**
+Rotation (§7.9) cannot: it preserves `a_0` by construction, which is exactly
+what lets it keep the npub, so it moves shares around a secret that has already
+left. Re-dealing cannot either — a fresh dealing from the same nsec is a second
+sharing of the same secret, and the first one keeps working, because `t` of the
+old shares still reconstruct the same key. §6 has already given the reason: the
+identity *is* the key, and there is no rotation of it in protocol. A completed
+recovery is therefore not something a group recovers from cryptographically.
+It is something the members have to be **told**, while being told is still
+worth something.
+
+bifrost has nowhere to tell them. Its wire protocol carries `/sign`, `/ecdh`,
+`/ping`, `/echo` and `/onboard`; none of them means "the secret you hold a
+share of now also exists whole elsewhere." Every channel it has is per-peer and
+request-shaped, and this is a single fact about the whole group. A member never
+told keeps signing normally, with no way to learn that its share is no longer
+the only route to the key.
+
+This section proposes two things. First, the notice §4.2 already sends on a
+password-branch recovery — `RECOVERY_NOTICE` (kind 24316) — MUST also reach
+every pubkey in the group's `bfgroup1…` member list wherever the recovering
+client can name one: a cached group package, a prior export, or the user naming
+it directly. Second, a client completing such a recovery MUST hold the identity
+**recovery-pending**, and MUST NOT present the recovered nsec as an ordinary
+key, until the user has been shown that the old group's shares still work and
+has chosen what happens to them — retire that group and deal a new one, or keep
+it and destroy the recovered copy. Passkey-branch recovery releases without a
+delay because there is no phishing path to delay against (§4.2); it carries the
+same notice and the same pending state, without the delay.
+
+The delay is what makes the notice worth sending rather than merely polite.
+§4.2 already lets a device that receives one cancel the recovery outright, and
+the delay is the only window in which that power exists: before it elapses a
+member can stop a phished recovery, and after it elapses there is nothing left
+to stop. Reaching the members inside that window is the difference between a
+theft that can be cancelled and one that is merely disclosed afterwards.
 
 This changes nothing about §4.2's own timing. It states what a FROSTR group is
-owed once a recovery completes — a gap of FROSTR's own making, since a
-protocol whose channels are all per-peer has nowhere to put a message about an
-event that happens to the whole group at once — and one this document cannot
-close alone: a recovering client only knows which `bfgroup1…` to notify if it,
-or the user, kept one.
+owed once a recovery starts — a gap of FROSTR's own making, since a protocol
+whose channels are all per-peer has nowhere to put a message about an event
+that happens to the whole group at once — and one this document cannot close
+alone: a recovering client only knows which `bfgroup1…` to notify if it, or the
+user, kept one.
 
 ## Appendix A — References
 

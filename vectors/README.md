@@ -18,7 +18,8 @@ None belongs to anybody, and none should ever be used for anything.
 | File | Covers |
 |---|---|
 | `qrst-sas.json` | QRST §6 — the commit, the transcript hash, and the five digits. |
-| `nkm-frost.json` | NKM §7.4, §7.5, §7.9, §7.18 — dealing, share verification, signing, rotation. |
+| `nkm-frost.json` | Superseded by NKM 10.0's adoption of FROSTR (§7); kept for its historical record of the `t = 3` and parity findings below, which motivated part of the FROSTR rotation proposal in NKM §7.9. |
+| `frost-share-max.json` | QRST §4 (P1) and NKM §3.3 — the `frost-share` credential pair (`bfshare1…` + `bfgroup1…`) at the largest group size the default 2048 B payload ceiling carries, and one member past it. |
 
 ## Provenance
 
@@ -48,12 +49,15 @@ states a share check that does not hold at that threshold, and an implementation
 that reproduces the `false` has read the section correctly and found it
 unimplementable as written. See [SPEC_ISSUES.md](../SPEC_ISSUES.md).
 
+`frost-share-max.json` was generated the same way: a real secp256k1 trusted-dealer
+keyset (seeded for reproducibility only — §7.9 forbids a derived coefficient in a
+real dealer, exactly as `nkm-frost.json`'s note already says), encoded through
+bifrost's own bech32m wire format, and carried through the identical nested
+NIP-44-times-two, gift-wrap chain `payload_ceiling.py` computes. `share·G ==
+member_pubkey` is checked directly against the real curve points, not asserted.
+
 ## What is still missing
 
-- **The payload-ceiling vector required by §4 (P1).** P1 states that a
-  conformance vector MUST exist at exactly the declared maximum, and none does.
-  This is the case where NIP-44's power-of-two padding makes an off-by-one-chunk
-  error invisible everywhere else, which is precisely why P1 asks for it.
 - **A §11.4 gift-wrap vector.** One exists but is not yet published here: its
   fixture sets the wrap's `created_at` about four days before the wall-clock
   time implied by its own `expiration` tag, and §11.4 describes the NIP-59
@@ -61,7 +65,7 @@ unimplementable as written. See [SPEC_ISSUES.md](../SPEC_ISSUES.md).
   carries are correct; the timestamp has to be brought inside the window before
   the vector can be normative.
 
-Until both exist, the incomplete test vectors remain a named gap in
+Until it exists, the incomplete test vectors remain a named gap in
 [README.md](../README.md).
 
 ## Checking an implementation

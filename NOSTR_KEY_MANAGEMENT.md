@@ -243,52 +243,57 @@ does permit it — §3.3).
 
 ### 3.3 Profile `frost-share`
 
-Registered against QRST §5. Gives a joining device a single threshold share — a
-**generic** index-2 replica for the co-signer mode (§7.7), or a **unique** index
-share for a device quorum (§7.18). One payload either way; the `index` field says
-which, and the paste-delivered form uses the `frost://` carrier of QRST §12.3.
+Registered against QRST §5. Threshold signing is not specified by this
+document — it is [FROSTR](https://github.com/FROSTR-ORG/bifrost) (bifrost's wire
+protocol and bech32m credential formats, and the `igloo` family of clients built
+on it), adopted whole (§7). This profile exists because FROSTR names an
+out-of-band channel for share distribution and does not specify one: its own
+[security model](https://github.com/FROSTR-ORG/bifrost/blob/main/docs/SECURITY.md)
+lists "secure, authenticated channels (out-of-band)" as a trust assumption, and
+its shipping clients meet that assumption by scanning a `bfgroup` QR and then a
+`bfshare` QR **in plaintext** — the identical attack this document's transfer
+mechanism exists to prevent (QRST's new §16 names the specific client). This
+profile is that channel: it carries a FROSTR credential pair, unchanged, inside
+QRST's SAS-gated, gift-wrapped envelope instead of a bare QR.
+
+A joining peer needs two artifacts before it can speak to its group at all: its
+own **share** and the **group** package that share belongs to (bifrost's own
+`/onboard/res` returns the group package alone — [PROTOCOL.md](https://github.com/FROSTR-ORG/bifrost/blob/main/docs/PROTOCOL.md#onboarding-protocol)
+— because it assumes the share already reached the peer some other way). This
+profile carries both, since a brand-new device has neither.
 
 | QRST requirement | This profile |
 |---|---|
-| Payload encoding | The 32-byte share scalar, 64 lowercase hex characters, plus `index`, `group_pub`, `commitment`, `epoch`, `group_secret`, and `CK` only when the receiver is trusted (§7.7). `index = 2` is the co-signer replica; `index ≥ 1` unique is a quorum share. Carried in the QRST PAYLOAD (kind 24405). |
-| Max size | Default (2048 B). |
-| P4 check | `share·G == group_pub + commitment·index`. |
-| P5 rendering | The identity the share belongs to, and that this device will hold **one share, not the key** — it cannot sign alone, and cannot sign at all until admitted (§7.1). For a quorum share it also names that two of your devices must be present to sign. |
-| §5 prompt wording | "Give *X* a share of your key." Materially less severe than `nostr-nsec`: a share alone signs nothing, and the device can be revoked. |
-| Additional tags | `enroll`, as above. |
-| Offline tier (QRST §10) | Permitted, as the passphrase-encrypted container below. A raw, unencrypted share MUST NOT be shown or pasted. |
+| Payload encoding | Two bech32m strings, ASCII, joined by a single space: the peer's own `bfshare1…` (bifrost's `SharePackage` — a 4-byte member index and the 32-byte share scalar, 36 bytes) and the group's `bfgroup1…` (bifrost's `GroupPackage` — a 33-byte compressed group public key, a 4-byte threshold, and one `{index, pubkey}` per member, where `pubkey` is that member's own point `share_i·G`, not a polynomial coefficient commitment). Both wire formats are bifrost's own (`bifrost/src/encoder/{share,group}.ts`); this profile defines no encoding of its own, only the pairing. |
+| Max size | Default (2048 B). Measured with `payload_ceiling.py`'s chain against bifrost's real wire sizes: a share is fixed at 72 characters; an `n`-member group runs 133 characters at `n = 1` to 1968 at `n = 32`. **32 members is the largest group this profile carries within the default budget** — one more pushes the pair to 2100 payload bytes, past the ceiling. At `n = 32` the wrapped event is 5997 bytes and the relay `EVENT` message 6007, comfortably inside every §11.6 tier (content ≤ 8196, event ≤ 65536, message ≤ 131072); no larger maximum is declared. `vectors/frost-share-max.json` is the P1 conformance vector, built from a real (seeded, reproducible) secp256k1 keyset at exactly this boundary and one member past it. |
+| P4 check | Both strings decode without error against bifrost's encoder, which itself rejects a malformed size (36 bytes for a share; `37 + 37·n` for an `n`-member group). The share's `index` MUST appear in the group's `members` list, and `share·G` MUST equal that member's stored `pubkey`. This is bifrost's own share-verification shape — each member's point is carried directly in the group package, so there is no separate Feldman commitment step to check. |
+| P5 rendering | Derive the group's npub by dropping the group public key's leading parity byte (bifrost stores it 33-byte compressed; a Nostr identity is the 32-byte x-only remainder) and resolve a display name if cached. Show **"share *N* of *M*, *K* required"** from the share's index, the member count, and the group's threshold, and state plainly that this device holds one share and cannot sign alone. |
+| §5 prompt wording | "Give *X* a share of your key." Materially less severe than `nostr-nsec`: a lone share signs nothing, and a FROSTR group's own peer policy can simply stop answering that peer's requests. |
+| Additional tags | None. A FROSTR peer's identity is the member pubkey already present in the transferred `bfgroup1…`; there is no separate enrollment keypair or device-list event (§7.1). |
+| Offline tier (QRST §10) | Permitted, as the passphrase-encrypted container below. A raw, unencrypted credential pair MUST NOT be shown or pasted — the exact thing this profile exists to prevent. |
 
-> **One Sender, either shard type.** The co-signer replica is a copy from one
-> Sender by construction (every device holds the same index-2 share). A quorum share
-> is unique, but is still delivered by a single Sender: two existing devices compute
-> `f(k)` jointly *before* the transfer (§7.18), and one of them sends the finished
-> share. QRST never sees two partials, so its one-Sender attribution check is
-> satisfied in both modes and no carve-out is required.
-
-**Offline container.** Where no transport is reachable (QRST §10), the share is
-delivered as a passphrase-encrypted blob. A share is not a bare 32-byte key, so it
-has no NIP-49 `ncryptsec` form — that format is fixed to a 32-byte payload, and a
-share carries a second secret (`group_secret`) and the metadata to verify it. This
-profile therefore defines its own container over NIP-49's construction:
+**Offline container.** Where no transport is reachable (QRST §10), the pair is
+delivered as a passphrase-encrypted blob, unchanged from prior versions of this
+document except in what it seals:
 
 - **KDF:** scrypt with `r = 8, p = 1, log_n = 18` (matching §4.1), over the
   passphrase and a random 16-byte salt.
 - **Cipher:** XChaCha20-Poly1305 with a random 24-byte nonce; the version byte is
   the associated data.
-- **Plaintext:** the entire QRST payload above — share scalar, `index`, `group_pub`,
-  `commitment`, `epoch`, `group_secret`, and `CK` when the receiver is trusted.
-  Sealing the whole payload, not only the scalar, also hides which identity the
-  share belongs to.
+- **Plaintext:** the QRST payload above — the `bfshare1…` and `bfgroup1…`
+  strings, space-joined. Sealing the pair, not only the share, also hides which
+  identity it belongs to.
 - **Container:** `version (0x01) || log_n (1) || salt (16) || nonce (24) ||
   ciphertext || MAC (16)`, then bech32 with HRP `frostshare` (per NIP-19, no length
-  limit). It is deliberately **not** an `ncryptsec1` string; the `frostshare1…`
-  prefix and its checksum mark it as a share and catch paste errors.
+  limit). Deliberately not a `bfshare1…` or `ncryptsec1…` string; the
+  `frostshare1…` prefix and its checksum mark it as an encrypted pair and catch
+  paste errors.
 
-The receiver decrypts, verifies `share·G == group_pub + commitment·index`, renders
-P5, and confirms (QRST §10 step 3). Offline delivery has no admission-independent
-gate beyond the passphrase, so it inherits the same reconstruction caveat as the
-§12.3 light flow: an intercepted blob whose passphrase is guessed, plus one other
-share, is the key.
+The receiver decrypts, applies the P4 check above, renders P5, and confirms (QRST
+§10 step 3). Offline delivery has no admission-independent gate beyond the
+passphrase, so it inherits the same reconstruction caveat as the §12.3 light
+flow: an intercepted blob whose passphrase is guessed, plus one other member's
+share, reconstructs the group secret.
 
 ---
 

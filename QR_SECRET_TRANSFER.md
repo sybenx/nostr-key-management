@@ -953,6 +953,38 @@ decrypt; and messages discarded by the session-window test of §11.4.
   where a passphrase-sealed one does not.
 - A compromised device yields whatever that device holds.
 
+## 16. Relationship to FROSTR echo
+
+*Non-normative.* [FROSTR](https://github.com/FROSTR-ORG/bifrost) is a FROST
+threshold-signing protocol with shipping clients (`igloo`) and its own
+onboarding flow. Its reference iOS client onboards a new share by scanning a
+`bfgroup` QR and then a `bfshare` QR, **both in plaintext**
+([`app/onboarding/scan.tsx`](https://github.com/FROSTR-ORG/igloo-ios/blob/main/app/onboarding/scan.tsx)),
+saves them, and sends an **echo** — a request/response round trip
+([`igloo-core`'s `echo.ts`](https://github.com/FROSTR-ORG/igloo-core/blob/main/src/echo.ts),
+FROSTR's `/echo/req` and `/echo/res` tags) — to confirm the share was received
+and the new device is reachable on the group's relays.
+
+Echo answers a different question than this mechanism does, and answering it
+well does nothing to answer this one. Echo confirms **arrival**: the bytes
+that were shown on the first screen are the same bytes now sitting on the
+second, and the second device can be reached. It runs *after* the share has
+already crossed whatever channel carried the QR — in the reference client, a
+camera pointed at an unencrypted code, screenshottable, shoulder-surfable, and
+recoverable from anything that ever had that photo. Nothing about a
+successful echo says who else photographed the same code. This mechanism
+answers the question echo cannot: it keeps the share off that channel in the
+first place, encrypted end to end between two burner keys and released only
+after a person compares a code across two screens (§6, §9).
+
+**The two compose rather than compete.** A `frost-share` payload (NKM §3.3)
+delivered by this mechanism arrives at the Receiver exactly as intact as one
+scanned from a plaintext QR — P4's check is the same bech32m decode and
+`share·G == pubkey` verification either way — so nothing stops a FROSTR client
+from running its own echo immediately afterward. The composition is: **this
+mechanism delivers, echo confirms.** Delivery is what was missing; echo was
+never the gap.
+
 ## Appendix A — References
 
 NIP-11, NIP-40, NIP-42, NIP-44, NIP-49, NIP-59. BIP-340. ZRTP (RFC 6189), the

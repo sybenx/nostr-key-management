@@ -669,6 +669,52 @@ event id, the co-signer MUST refuse the precomputed form for any requester subje
 to a kinds allowlist." TIERS.md §6.0 states the second requirement for grant indices
 already; the first belongs in NKM, because NKM's co-signer mode has the same hole.
 
+### "k co-signer votes" is unsatisfiable by co-signers, and the delay would break tier-1 revocation
+
+**Document:** TIERS.md
+**Section:** §7.2, §7.1 (and NOSTR_KEY_MANAGEMENT.md §7.9)
+**Kind:** ambiguity
+
+The decision this document was written from gives the rotation and revocation
+authority as "a trusted device plus `k` co-signer votes plus the §7.10 delay, with
+notice to all trusted devices and a veto during the window." Read literally against
+§4.2's constraint (1), `n_s < k`, that is unsatisfiable: there are never `k`
+co-signers to vote, so no rotation could ever complete and the grant issue of §5.1,
+which is a rotation, could never run either. Two readings resolve it.
+
+**Reading A, taken.** The votes are counted in *weight*, not in co-signers: a
+rotation needs votes totalling `k`, the initiating trusted device contributes its `T`,
+and the remaining `k − T` come from co-signers. This is satisfiable at every
+configuration §4.2 permits, and it reduces to exactly NKM §7.9 step 1 — "signed by the
+group key with **old** shares … so it requires server and one device — neither can
+rotate alone" — which is the same rule at `T = 1`, `k = 2`. It also preserves the
+sentence the decision pairs it with, that a single trusted device cannot rotate
+alone, since `T < k` (§4.3). §7.2 is written this way.
+
+**Reading B, rejected.** Every co-signer must vote, unanimously. This is satisfiable,
+but it makes any one co-signer's unavailability block every rotation — including the
+rotation that revokes a compromised index — which inverts the availability argument of
+§4.3 and gives a single unreachable server a veto over incident response.
+
+A second ambiguity sits beside it. The decision names "rotation **and revocation**"
+together and attaches the delay to both. Applied literally, cutting off a compromised
+grant would take 24 hours. NKM §7.9 already splits this — tier 1 revokes `E`
+immediately, "without touching any share and without contacting the revoked device",
+and tier 2 rotates — so **the reading taken attaches the three-part authority and the
+delay to tier 2 only**, and leaves tier 1 as one trusted device acting immediately, as
+NKM has it. TIERS.md §7.1 says so and gives the reason: a delay on refusal is not a
+safeguard, it is the window the attacker wants.
+
+**Proposed fix:** TIERS.md §7.1 and §7.2 state both readings as taken. If the intent
+was Reading B, §7.2(2) should read "votes from every co-signer" and §4.3's slack
+argument needs restating, because a configuration with `s = 1` would then tolerate a
+co-signer outage for signing but not for rotation, which is worth saying out loud
+either way. If the delay was intended to cover tier-1 refusal as well, §7.1 should be
+deleted and NKM §7.9's two-tier structure declared inapplicable here — but then
+nothing in this document can cut off a compromised grant faster than a day, and
+§6.1(d)'s freeze becomes the only incident-response tool, which it was not designed
+to be.
+
 ## Resolved
 
 ### A failed probe can leave a browser Holder with no transport at all

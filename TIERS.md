@@ -605,3 +605,94 @@ requires policy whose *principal* is the user's trusted device, and today's
 co-signer treats policy as operator configuration.
 
 ---
+
+## 7. Rotation and revocation authority
+
+### 7.1 The two tiers, as in NKM §7.9
+
+NKM §7.9 separates revocation into an immediate refusal that touches no share, and a
+rotation that makes a retained share useless. This document keeps that separation and
+puts its new authority requirement on the second only.
+
+**Tier 1 — refusal. One trusted device, no delay.** A trusted device MAY instruct
+every co-signer to refuse all rounds for a named index from that moment, and every
+co-signer MUST comply. This is NKM §7.9 tier 1 and §6.1(d)'s freeze narrowed to one
+index. It requires no vote and MUST NOT be delayed: an index believed compromised has
+to be cut off in seconds, and a day-long window on that is not a safeguard, it is the
+attack. It does not remove the share, and a set that reaches `k` without any
+co-signer is unaffected by it.
+
+**Tier 2 — rotation.** Everything below.
+
+### 7.2 Authority for a rotation
+
+A rotation — a new epoch under §5.1's reshare, whether to revoke an index, to add a
+trusted device, to issue a grant, or to drop expired ones — MUST satisfy all three:
+
+1. **Initiation by a trusted device.** A co-signer MUST NOT initiate, and a grant MUST
+   NOT initiate or vote (§3.3).
+2. **Votes totalling `k`** against the proposed new epoch record, of which the
+   initiating trusted device contributes its `T` and the remaining `k − T` MUST come
+   from co-signers. Because `T < k` (§4.3), **a single trusted device cannot rotate
+   alone**: it is always one or more co-signer votes short, and this is the point of
+   fixing `T` below `k`.
+3. **The delay of NKM §7.10**, with a notice to **every** trusted device in the current
+   epoch naming the initiator, what the rotation changes, and when it completes; and a
+   **veto** available to any trusted device for the whole window. An approval from a
+   second trusted device completes it immediately. A veto abandons it.
+
+The new epoch record is signed by the group with the old shares before any delta is
+applied, exactly as NKM §7.9 step 1 requires, so the vote and the signature are the
+same act.
+
+### 7.3 What this means, stated plainly
+
+**A set of parties totalling weight `k` with no trusted device in it can in principle
+drive a rotation and reissue a trusted-weight share, once the delay elapses.** The
+requirement in 7.2(1) that a trusted device initiate is a rule co-signers follow, not
+a fact the mathematics enforces; the access structure is flat (§2.1) and a weight-`k`
+set can sign any epoch record it likes. In the reference configuration such sets
+exist and are enumerated as sets 10 to 13 of §4.5. Where `n_s ≥ k` the co-signers
+alone would be such a set, which is the second reason constraint (1) exists.
+
+The only thing between that set and the key is 7.2(3)'s delay and veto, and **the
+veto needs a surviving trusted device to cast it.** Where every trusted device is
+lost, the notices reach nobody, the window elapses on its own, and the rotation
+completes — precisely as NKM §4.2 provides for a recovery with no registered `E.pub`.
+
+**This is the accepted trade, and it is accepted against loss.** A construction in
+which no set without a trusted device could ever rotate would be a construction in
+which losing every trusted device loses the identity permanently, with no server-side
+recovery at all — NKM §7.18's device quorum is that construction, and NKM says so:
+"A quorum with no usable backup and fewer than `t` surviving devices is
+unrecoverable." This document buys a recovery path and pays for it in exactly one
+coin: the co-signers, colluding with enough other weight, are a path to the key after
+a delay. A client MUST state this on the screen where co-signers are enrolled, in
+those terms, and MUST NOT describe co-signers as unable to reach the key.
+
+Two things narrow it, and neither closes it:
+
+- Constraint (1) means the co-signers need help — a grant, or a trusted device — to
+  reach `k`. The live-grant budget is therefore a security parameter for this
+  property and not only for §4.5, and a user running no live grants removes the
+  cheapest version of it.
+- Co-signers that are independently administered must all defect. §3.2's rule that
+  one operator's several processes count as one party is what keeps that from being a
+  single decision by a single operator.
+
+### 7.4 What a rotation does
+
+- The new member list MUST omit every grant index live in the old epoch (§3.3), with
+  no exception for unexpired ones.
+- A revoked index MUST be omitted from the new member list, and its number MUST NOT be
+  reused (§2.2).
+- A new trusted device is admitted by the same reshare as a grant (§5.1), issued `T`
+  indices rather than one, and delivered by `T` QRST sessions of the `frost-share`
+  profile — one payload per index, since one payload carries one share (NKM §3.3).
+- Every surviving member applies its own delta at each index it holds and verifies the
+  result against the new epoch's commitments before acknowledging. A member that
+  cannot verify MUST NOT discard its old-epoch share; NKM §7.4's retention rule
+  applies unchanged.
+- Co-signers MUST discard every grant record on entering the new epoch (§5.3).
+
+---

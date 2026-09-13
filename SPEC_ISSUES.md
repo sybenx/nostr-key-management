@@ -632,7 +632,9 @@ and TIERS.md §5.1 step 4 states as a MUST.
 What remains true is the first gap: NKM §7.18's "combine them on one of the two" is
 the unblinded version, sound at `t = 2` among the user's own hardware and wrong the
 moment the contributors are not equally trusted, since in a weighted group a trusted
-device holds `T = k − 1` and a co-signer's contribution is the missing unit.
+device holds `T` of the `k` helper indices — `k − 1` at the former `k = 3` reference,
+where a co-signer's contribution was the missing unit, and `k − 2` at TIERS.md's current
+one.
 
 **Proposed fix:** NKM §7.9 should add, after step 4: "The delta of this section is
 `frost-core`'s `keys::refresh`; a client SHOULD use it rather than reimplement the
@@ -759,7 +761,8 @@ a share by the repairable threshold scheme, in which the joining device must rec
 one masked sum from each helper **party** — always at least two, one trusted device and
 one co-signer, because the helper set must reach weight `k` and a trusted device holds
 `T < k`. The initiating trusted device cannot collect them first: a masked sum it can
-read, added to the others, is the new share, and `T + 1 = k` is the key. So the
+read, added to the others, is the new share — weight the initiator must never hold, and
+where `T = k − 1`, as at the former `k = 3` reference, `T + 1 = k` is the key. So the
 material has to reach the joining device from more than one party, and the sentence
 above admits two readings.
 

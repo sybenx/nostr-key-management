@@ -669,8 +669,9 @@ which holds no share and is not a rotation.
    - **Nobody learns anyone else's share.** Helper `i`'s contribution is blinded by
      `δ_{i→i}`, which `i` never sends, so no coalition of the remaining helpers can
      recover `ζ_i(x_g)·s_i`. This is exactly the case §4.3 makes dangerous: the issuing
-     trusted device holds `T` of the `k` helper indices — `k − 1` of them at the
-     reference configuration of §4.4 — receives only the co-signers' random `δ` values,
+     trusted device holds `T` of the `k` helper indices — `k − 2` of them at the
+     reference configuration of §4.4, and never fewer than `W_cap + 1` short of `k` by
+     (6) — receives only the co-signers' random `δ` values,
      never receives any `δ_{i→i}`, and never receives another party's `σ`. It ends the
      issue holding weight `T`, exactly as it began.
    - **The new device learns only its own share.** Each `σ_j` it receives is masked by
@@ -1351,9 +1352,12 @@ This is normative and is the point of the section.
   co-signer MUST be refused by the client: that operator would hold one index and the
   ciphertext of `T` more, which is the same concentration NKM §7.12 warns of for the
   blob and share 1 on one host.
-- **A backup is worth a trusted device to whoever opens it.** At §4.4's reference
-  configuration `T = k − 1`, so the factor plus one co-signer is the key; under §4.6's
-  Profile B it is the factor plus `k − T` co-signers. The factor
+- **A backup is worth a trusted device to whoever opens it.** The factor plus `k − T`
+  co-signers is the key — two at §4.4's reference configuration, where `T = k − 2`, and
+  three under §4.6's Profile B — and the factor plus grants its holder issues itself
+  still needs at least one, by (6). Under Profile A the factor plus any *other* trusted
+  device is also the key, by (4); plus the device it was taken from it is nothing more,
+  because the two hold the same indices (§7.6). The factor
   MUST be treated by the client as material of the same sensitivity as a trusted
   device's storage, and the screen that presents it MUST say so rather than describing
   it as "a backup". §7.6 adds the other half: whoever restores from it can veto, approve
@@ -1677,7 +1681,8 @@ deletions must still reach the other trusted devices as something a person reads
 is not small.
 
 - An attacker holding one trusted device avoids the second device's approval by
-  signing with a co-signer instead (`D1 + C1` = `k`), which puts the request into
+  signing with co-signers instead (`D1` and `k − T` of them — `D1 + C1 + C2` at the
+  reference configuration), which puts the request into
   §6.1(e)'s window rather than stopping it. **If no other trusted device reads the
   notice before the delay elapses, the deletion completes.** Where the user has no
   second trusted device, the window elapses on its own by construction, exactly as NKM
@@ -1760,8 +1765,14 @@ to the new device through a mechanism that carries one payload from one party.
 
 The initiating trusted device MUST NOT be the party that assembles them. It holds
 `T` indices and the helper set reaches `k`; a `σ` it can read, summed with the others,
-is `f'(x_g)`, and `T` indices plus that share is a set that reconstructs. Whatever the delivery does, the initiator carries the other
-helpers' contributions without being able to open them.
+is `f'(x_g)`, the new index's share, in the hands of a party that already holds `T`. Where
+`T = k − 1`, as in Appendix C's configuration, `T` indices plus that share reconstruct,
+and the initiator can also subtract its own contribution to recover the lone other
+helper's share. Where `T` is smaller, as at §4.4's reference configuration, a grant's
+share does not reconstruct — `T + 1 ≤ T + W_cap < k` by (6) — but a new trusted device's
+`T` indices do under Profile A, by (4), and in every case the initiator would end holding
+a copy of a share issued to someone else, which §5.1 step 4 forbids. Whatever the delivery does, the initiator
+carries the other helpers' contributions without being able to open them.
 
 ### B.1 Out-of-band σ, the general form
 
@@ -1824,11 +1835,14 @@ and a signature) and `k − 1` commitments:
 | Configuration | Helper parties | Payload | Against the 2048 B default |
 |---|---|---|---|
 | `k = 3`, `T = 2`, one co-signer helping | 2 | 834 B | Fits |
+| `k = 4`, `T = 2`, two co-signers helping | 3 | 1262 B | Fits |
 | `k = 5`, `T = 2`, three co-signers helping | 4 | 1690 B | Fits |
 | `k = 7`, `T = 2`, five co-signers helping | 6 | 2546 B | **Over** |
 
-So B.2 is available to the default configuration of §4.4 and to the `k = 5` profile of
-§4.6, and stops being available around six helper parties — where the profile would
+The `k = 4` row is not separately measured: the other three grow by exactly 358 B per
+helper party and 70 B per commitment, and it is that arithmetic. The `k = 3` row is
+Appendix C's configuration and is kept for comparison. So B.2 is available to the
+default configuration of §4.4 and to the `k = 5` profile of §4.6, and stops being available around six helper parties — where the profile would
 have to declare a larger maximum under QRST §4 P1 and clients would then have to skip
 relays that cannot carry it (QRST §11.6). B.1 has no such ceiling, because each `σ` is
 its own wrap.

@@ -563,7 +563,7 @@ admitted.
    rotation cannot change `k`, so switching is a Re-split.
 
 **What Profile B does not change.** Constraint (3) still gives a single trusted device a
-working path, §6.1(e)'s delay still fires on a trusted-only kind from a single trusted
+working path, §6.1(e)'s delay still fires on a held change from a single trusted
 device, and §7's rotation authority is untouched. The first bullet of §11.4's residual
 survives both profiles.
 
@@ -592,21 +592,25 @@ mode for an application that must sign while no trusted device is reachable.
   the application's name, the kinds the session may sign, and whether it may decrypt,
   and MUST obtain the user's confirmation on the device.
 - **Policy is the trusted device's, and it MUST apply at least this much.** A kinds
-  allowlist per session, with the same default as §6.1(a). Every kind on §6.1(b)'s
-  trusted-only list refused unless the user approves that individual request on the
-  trusted device. Decryption refused unless the session was granted it at pairing, with
+  allowlist per session, with the same default as §6.1(a). Kinds `0`, `3`, `5` and
+  `10002` available unless withheld at pairing, under §6.1(e)'s classification exactly as
+  for the device itself: a fast-path change signs at once, and a held one is held, with
+  the trusted device showing the user every held change a session requested and letting
+  the user cancel it, which co-signers MUST accept from that device as a veto. Every other
+  kind on §6.1(b)'s trusted-only list refused unless the user approves that individual
+  request on the trusted device. Decryption refused unless the session was granted it at pairing, with
   §6.0.4's three values and the same warning for `all`. Per-session rate limits no
   looser than §6.1(c)'s grant limits. A session MAY carry an expiry and MUST end when the
   user ends it, when its trusted device is revoked or removed, or at that expiry.
 - **What the co-signers see is the trusted device.** A session's signing set is the
   trusted device and co-signers, and the requesting index is the trusted device's. Every
   co-signer applies trusted-tier policy to it: §6.0's event visibility, §6.1(c)'s
-  counters for a trusted index, §6.1(d)'s freeze, and §6.1(e)'s hold on a trusted-only
-  kind requested with one trusted device in the set. A deletion approved on the device
-  for a session is held and vetoable exactly as one the device originated. A co-signer
-  cannot tell a session's request from the device's own and MUST NOT be asked to treat
-  it differently. §6.1(e)'s hold is a hold on a *signature*, attached to the kind; it is
-  not the rotation delay of §7.2, which never applies to a session.
+  counters for a trusted index, §6.1(d)'s freeze, and §6.1(e)'s classification and
+  hold. A mass deletion or a large unfollow requested through a session is held and
+  vetoable exactly as one the device originated. A co-signer cannot tell a session's
+  request from the device's own and MUST NOT be asked to treat it differently. §6.1(e)'s
+  hold is a hold on a *signature*, attached to the change it makes; it is not the
+  rotation delay of §7.2, which never applies to a session.
 - **A session issues nothing and triggers no rotation.** Opening, using or ending one
   adds no index, changes no member list, advances no epoch, counts toward neither `N`
   nor `W_g`, and does not stale a backup. §5.1 to §5.3, §7.2's authority and delay, and
@@ -820,11 +824,12 @@ itself per NIP-01 and signs only its own computed hash. A bare 32-byte sighash, 
 any digest the co-signer did not derive, is refused.
 
 The rule covers trusted indices as well as grants, and this is not caution. §6.1(e)'s
-delay and veto fire on the **kind** of a trusted-only event requested with a single
-trusted device in the signing set, so a co-signer that will sign a bare hash for a
-trusted index has no delay path at all — the compromised-device case of §11.4 stops
-being a delayed attack and becomes an immediate one. The allowlist needs the kind; so
-does the delay.
+delay and veto fire on what a trusted-only event **changes** — its kind, its tags and its
+content, compared with the prior — when it is requested with a single trusted device in
+the signing set, so a co-signer that will sign a bare hash for a trusted index has no
+delay path at all — the compromised-device case of §11.4 stops being a delayed attack
+and becomes an immediate one. The allowlist needs the kind; the delay needs the whole
+event.
 
 This is NKM §7.6's rule. SPEC_ISSUES.md records that FROSTR's native signing message
 carries sighashes only, and that the one HTTP surface which does accept a full event
@@ -996,15 +1001,57 @@ covers. **Under Profile B (§4.6) a freeze stops everything**, because no signin
 exists without a co-signer in it; the indicator MUST say that instead, and MUST NOT use
 the same wording for both profiles.
 
-**(e) A delay with veto, for trusted-only kinds from a single trusted device.** Where
+**(e) A delay with veto, for destructive changes from a single trusted device.** Where
 a trusted-only kind is requested and the signing set contains exactly one trusted
-device, a co-signer MUST NOT return its partial signature immediately. It MUST:
+device, a co-signer MUST classify the event before returning its partial signature, as
+**fast path** — co-sign at once — or **held**. For kinds `3`, `0`, `10002` and `5` the
+classification is by what the event changes, against the **prior**: the latest event of
+that kind for the identity that the co-signer holds (below). Every other trusted-only
+kind is held.
+
+| Kind | Fast path, no hold | Held, with veto |
+|---|---|---|
+| `3` follow list | Adds entries, and removes at most `N` of the prior's entries (default 5) and at most 20% of them | Removes more than `N`, or more than 20%, of the prior's entries |
+| `0` profile | `name` and `picture` both unchanged; or one of them changed, with a notice to every other trusted device naming the old and new value | `name` and `picture` both changed |
+| `10002` relay list | Adds relays and removes none | Removes a relay, or drops a relay's read or write role |
+| `5` deletion | Within the daily count for the identity (default 10 deletion events per rolling 24 hours), and naming at most `M` events (default 5) | Above the daily count, or naming more than `M` events |
+
+- **What is compared.** A kind-3 entry is a tag, identified by its name and first value.
+  `name` is the content's `name` and `display_name` fields together; `picture` is its
+  `picture` field. A kind-10002 relay is an `r` tag, identified by its normalised URL,
+  with its marker. The events a kind 5 names are its `e` and `a` tags. NKM §7.6's refusal
+  of a deletion naming a kind-30242 coordinate applies before any of this, from every
+  index.
+- **Removals accumulate.** The thresholds for kinds 3, 0 and 10002 apply both against the
+  prior and against the event the co-signer held for that kind 24 hours earlier; a
+  change is fast path only if it passes both. Otherwise five removals at a time, repeated,
+  empty a follow list without a single hold.
+- **One classification for every requester.** It applies identically to a trusted
+  device's own request and to a session's (§5.0), which a co-signer cannot tell apart.
+  Grants never reach it for these kinds: §6.1(b) refuses `0`, `3`, `5` and `10002` to a
+  grant unconditionally, as before.
+- **The prior.** A co-signer MUST keep, per identity, the latest event of kinds `0`, `3`
+  and `10002` and the one from 24 hours earlier, and a rolling count of kind-5 events.
+  It MUST forward every such event it co-signs to every other co-signer, and MUST replace
+  its prior with any validly signed event of the kind for the identity with a later
+  `created_at` that it receives from a co-signer or sees on the identity's relays — a
+  signing set it was not in, including two trusted devices under Profile A, can publish
+  one. A held event becomes the prior only when it completes. Where a co-signer holds no
+  prior, it MUST look for one on the relays of the identity's latest kind `10002` before
+  classifying; where it finds none, the request is **held**. SPEC_ISSUES.md records this
+  reading.
+- A co-signer MAY apply the kind-3 rule to another replaceable or addressable list kind
+  whose entries are tags and whose content is empty or unchanged. It MUST NOT fast-path
+  any other change to one.
+
+A held request is handled as follows. The co-signer MUST NOT return its partial signature
+immediately. It MUST:
 
 1. hold the request for the recovery delay of NKM §7.10 (NKM §4.2's default, 24
    hours);
 2. send a notice to **every other trusted device** in the current epoch, naming the
-   requesting device by its label, the kind, and the time at which the request
-   completes;
+   requesting device by its label, the kind, what the change removes or replaces, and the
+   time at which the request completes;
 3. complete the round when the delay elapses, or immediately on an approval from any
    other trusted device;
 4. abandon the round on a veto from any other trusted device, and refuse every
@@ -1611,7 +1658,7 @@ line are cited beside it.
 | Threat | Raw nsec pasted | NIP-46 to a signer app | This document |
 |---|---|---|---|
 | Malicious web app | Holds the key permanently; there is nothing to revoke and no way to learn it happened. | Cannot take the key, but signs whatever the signer's policy permits, for as long as the session stands. | By default holds no share: a session (§5.0) signs only what the trusted device approves, through co-signers, and ends the moment the user ends it. Where given a grant instead, holds one weight-1 grant that reaches `k` only with a trusted device and a co-signer (§4.5 sets 8–13) or with every co-signer (set 14), signs no destructive kind (§6.1(b)), expires, and is dropped at the next rotation (§3.3). |
-| Compromised trusted device | Is the key, totally and permanently. | Is the key if that device runs the signer; otherwise one revocable session. | Holds `T`, short of `k` by §4.3, so it needs co-signers it does not control (§4.5 sets 2–13); by (6) no grant it issues itself replaces them; delayed and vetoable on trusted-only kinds where a co-signer is in the set (§6.1(e)), cut off immediately by §7.1. It changes the trusted set only at L1 (§7.4): delayed, vetoable by any other trusted device, and cancelled outright by the recovery share at L2. Where it and another trusted device disagree, co-signing freezes and the recovery phrase decides. |
+| Compromised trusted device | Is the key, totally and permanently. | Is the key if that device runs the signer; otherwise one revocable session. | Holds `T`, short of `k` by §4.3, so it needs co-signers it does not control (§4.5 sets 2–13); by (6) no grant it issues itself replaces them; delayed and vetoable on destructive changes — mass deletion, a large unfollow, relay removal, profile replacement — where a co-signer is in the set (§6.1(e)), cut off immediately by §7.1. It changes the trusted set only at L1 (§7.4): delayed, vetoable by any other trusted device, and cancelled outright by the recovery share at L2. Where it and another trusted device disagree, co-signing freezes and the recovery phrase decides. |
 | Compromised co-signer(s) | No such party exists. | The signer is the only party, so compromising it is compromising the key. | One index each and `n_s < k`, so they neither sign nor rotate alone — but all of them with the live grant reach `k` (§4.5 set 14), which §7.3 states as accepted. |
 | Malicious grant holder | No analogue; the application was given the key. | Its session signs whatever the signer allows, for as long as the user leaves it connected. | Weight 1, allowlisted kinds only, needs a trusted device and a co-signer, or every co-signer (§4.5 sets 8–14), and ends at its expiry or the next rotation, whichever comes first (§5.2). |
 | Grant holder colluding with co-signers | No analogue. | No analogue: one party holds everything, so there is nobody to collude with. | With every co-signer, reaches `k` and is therefore the key (§4.5 set 14); the grant cap of constraints (2) and (6) is the only bound, and §7.3 refuses to hide it. |
@@ -1684,19 +1731,21 @@ user having deleted their history.
   trusted-only (§6.1(b))**, so overwriting long-form posts and lists is closed too. This
   is the clause that covers the kinds nobody has thought of yet, which a per-kind
   denylist cannot.
-- **A session gets no destructive kind without the user approving that request on the
-  trusted device (§5.0)**, and an approved one is then held by §6.1(e) like any other
-  trusted-only kind from a single trusted device.
+- **A session's deletions and list changes are classified and held by §6.1(e)** exactly
+  as the trusted device's own, and the device shows the user every held one (§5.0).
 - **The reference allowlist is append-only (§6.1(a)).** Kinds `1`, `6`, `7`, `13`, `16`
   add events; none destroys one. A grant at the reference policy has no destructive
   operation available to it at all.
 - **Rate limits per index (§6.1(c))** bound whatever a widened allowlist lets through and
   raise an `ALERT` to every trusted device on the way.
-- **The delay with veto (§6.1(e))** covers the case the allowlist cannot: a deletion
-  requested from a *trusted* index with only one trusted device in the signing set is
-  held, every other trusted device is notified, and any may veto. No partial signature
-  exists during the window, so a veto means **no deletion happened**, not that one was
-  reversed.
+- **The delay with veto (§6.1(e))** covers the case the allowlist cannot: deletions
+  above the daily count, or naming more than `M` events, requested from a *trusted*
+  index with only one trusted device in the signing set, are held, every other trusted
+  device is notified, and any may veto. No partial signature exists during the window,
+  so a veto means **no deletion happened**, not that one was reversed. The same hold
+  covers a large unfollow, a relay removal and a profile replacement. What passes
+  without a hold is bounded: at the defaults, ten deletion events a day naming five
+  events each.
 - **The freeze (§6.1(d))** lets any trusted device stop every co-signing round for the
   group in one act, once anything looks wrong.
 - All of it rests on **§6.0**: a co-signer that is handed a bare sighash sees no kind
@@ -1715,7 +1764,8 @@ is not small.
 - An attacker holding one trusted device avoids the second device's approval by
   signing with co-signers instead (`D1` and `k − T` of them — `D1 + C1 + C2` at the
   reference configuration), which puts the request into
-  §6.1(e)'s window rather than stopping it. **If no other trusted device reads the
+  §6.1(e)'s window rather than stopping it — a mass deletion, since one within the
+  daily count and `M` is not held at all. **If no other trusted device reads the
   notice before the delay elapses, the deletion completes.** Where the user has no
   second trusted device, the window elapses on its own by construction, exactly as NKM
   §4.2 provides for a recovery with no registered device — the notice has nobody to

@@ -799,6 +799,70 @@ check MUST cover whatever the contributions assemble into." Without one of these
 profile needing more than one contributor has to fit every contribution inside the
 payload and inherits P1's ceiling as a cap on its threshold.
 
+### §6.1(e)'s diff has nothing to compare a first event against
+
+**Document:** TIERS.md
+**Section:** §6.1(e) (and §5.0)
+**Kind:** ambiguity
+
+§6.1(e) classifies a kind `0`, `3` or `10002` event as fast path or held by comparing it
+with the **prior**, the latest event of that kind the co-signer holds for the identity.
+A co-signer can hold none: it was enrolled after the identity last published that kind,
+it lost state, or the identity has never published one. The rules do not say what a
+change is measured against then, and three readings produce working code that does not
+interoperate.
+
+**Reading A, rejected: an absent prior is an empty one.** Every kind-3 or kind-10002
+event then only adds, and is fast path. It is also exactly the wipe the rule exists to
+stop: a compromised device sends a follow list of one entry to a co-signer that has no
+prior, and the user's thousand follows are replaced without a hold. A co-signer can be
+made priorless on purpose by routing the request to one enrolled recently.
+
+**Reading B, rejected: an absent prior holds every first event.** Safe, but a newly
+enrolled co-signer then holds the user's next follow for a day, and so does every
+co-signer after a state loss, which is the failure mode that makes users turn policy off.
+
+**Reading C, taken.** A co-signer with no prior MUST look for one on the relays of the
+identity's latest kind `10002` before classifying, and uses what it finds. Where it finds
+nothing, the request is held. Relays are public and an attacker cannot make them forget a
+published list, so "found nothing" is, in practice, an identity that has never published
+the kind — whose first list is usually made during onboarding, in base mode, before any
+co-signer exists — or a relay outage, where holding is the right failure. The same section
+requires co-signers to forward the events they co-sign to each other and to adopt any
+later validly signed event they see, so a co-signer that missed a change signed without it
+is not left diffing against a stale prior; a stale prior is Reading A's attack in slower
+form.
+
+**Proposed fix:** none beyond §6.1(e)'s text, which states Reading C. If Reading B is
+preferred, §6.1(e) should replace "where it finds none, the request is held" with "where it
+holds no prior, the request is held", and accept the enrollment cost.
+
+### §6.1(e)'s per-event thresholds would be evaded by repetition
+
+**Document:** TIERS.md
+**Section:** §6.1(e)
+**Kind:** ambiguity
+
+The thresholds as decided are per event: kind 3 is fast path if it "removes at most `N`
+(default 5)" and holds if it removes "more than `N` or more than 20% of entries". Read per
+event against the immediate prior, a compromised device empties a hundred-entry follow
+list in twenty requests of five removals each, every one of them fast path, and removes
+relays or replaces a profile in the same way — name today, picture in the next request.
+Kind 5 does not have the problem, because its limit is already a daily count.
+
+**Reading taken.** Removals accumulate over a rolling 24 hours: a change is fast path only
+if it passes the thresholds against both the prior and the event the co-signer held for
+that kind 24 hours earlier. This keeps one-off changes fast and makes the day, not the
+request, the unit an attacker has to stay inside, which is the same unit kind 5 uses.
+
+`M`, the number of events one kind-5 event may name before it is held, had no default in
+the decision. §6.1(e) gives it 5, matching `N`; with the daily count of 10 that bounds
+unheld deletion at fifty events a day.
+
+**Proposed fix:** none beyond §6.1(e)'s text. If per-event thresholds were intended,
+§6.1(e) should drop "and against the event the co-signer held for that kind 24 hours
+earlier" and §11.4 should add the repetition case to its residual.
+
 ## Resolved
 
 ### A failed probe can leave a browser Holder with no transport at all

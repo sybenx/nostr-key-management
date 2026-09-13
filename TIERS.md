@@ -777,3 +777,87 @@ client MUST list it on the same screen as this section's backup and MUST NOT pre
 the two as equivalent.
 
 ---
+
+## 9. Attestation (OPTIONAL)
+
+A co-signer MAY require, as part of a grant's policy (§5.3, §6.1), platform
+attestation evidence that the grant index lives in an enclave-gated application
+before it will co-sign for that index. This section says what such evidence does and
+does not establish, because the gap between the two is where it will be misread.
+
+### 9.1 What a co-signer MAY require
+
+Where a policy requires attestation, the co-signer MUST refuse every round for that
+grant index unless the request carries, for that round:
+
+1. **An App Attest assertion** (iOS/macOS) over a fresh challenge the co-signer
+   issued, against a key the co-signer has previously seen attested; or a **Play
+   Integrity** verdict (Android) over a fresh nonce the co-signer issued, asserting at
+   least device integrity and application recognition.
+2. **A signature by the grant index itself over the same challenge.** Attestation
+   proves something about an application instance; it does not by itself say that
+   *this* instance holds *that* share. Without this binding, an attested honest app
+   and an unattested hostile one holding the share are indistinguishable to the
+   co-signer, and the requirement buys nothing.
+
+A co-signer MUST NOT require attestation of a trusted-device index. A trusted device
+is already bound by §3.1 to NKM §2.1's top rungs, is admitted by the user, and may run
+on platforms — desktop, Linux — for which no attestation service exists; requiring it
+there would exclude hardware the user owns in favour of hardware a vendor recognises.
+
+### 9.2 What is attested
+
+- That the application binary is the one the developer published: on iOS, an App ID
+  binding team and bundle identifier; on Android, a certificate-hash match against the
+  Play-distributed package.
+- That the hardware and operating system are ones the platform vendor vouches for —
+  genuine device, bootloader and OS in a state the vendor recognises, not rooted or
+  jailbroken as far as the vendor can tell.
+- That an asymmetric key exists in the device's Secure Enclave or hardware keystore and
+  the attestation is signed by it.
+- That this particular exchange is fresh, because the challenge came from the
+  co-signer.
+
+Combined with 9.1(2), this establishes: *a genuine build of a recognised app, on a
+device the vendor considers intact, is currently in possession of this grant's share.*
+
+### 9.3 What is not attested
+
+- **The enclave cannot sign secp256k1, and does not hold the share.** App Attest keys
+  are P-256 and sign only attestation and assertion payloads; no shipping enclave
+  produces a FROST partial signature over secp256k1. **The enclave gates the unwrap.**
+  It holds the key that unwraps the share; the share scalar itself is in ordinary
+  application memory for the duration of every signing round. Attestation therefore
+  evidences that unwrapping is gated — not that the share is confined, not that it has
+  never left, and not that it is not, at this moment, also on an attacker's machine.
+- **It is retrospective about nothing.** A share extracted once — by a runtime
+  compromise, a debugger attached while the device still attested, a memory
+  disclosure — stays extracted. Every later assertion from the honest app will pass
+  and will say nothing about the copy.
+- **It is a statement about a moment, not an interval.** It covers the instant the
+  assertion was produced. It does not cover the interval between that instant and the
+  partial signature, and there is no construction here that makes it cover it.
+- **It says nothing about intent.** A genuine, correctly attested, fully intact
+  application that is hostile to this user attests perfectly. §6's allowlist, §6.1's
+  trusted-only list and §11 are what address that; attestation does not touch it.
+- **It does not exist for web grants.** There is no browser equivalent, so a policy
+  requiring attestation excludes every browser-origin grant by construction. A client
+  MUST say this on the issue screen rather than letting the user discover it when the
+  grant silently stops working.
+- **It delegates part of the decision to a third party.** A co-signer requiring
+  attestation can be denied service by Apple or Google — an outage, a revoked key, an
+  app pulled from the store — and MUST fail closed when the evidence cannot be
+  validated, because a requirement that lapses when a service is unreachable is
+  bypassed by making it unreachable. The cost of failing closed is that the vendor
+  holds a switch over the user's ability to post from that grant, and a client MUST
+  state that where it offers the option.
+
+### 9.4 What attestation MUST NOT replace
+
+Attestation is an addition to §6, never a substitute for any part of it. A co-signer
+MUST apply admission (NKM §7.1), the kinds allowlist, the trusted-only list, the
+expiry and the rate limits to an attested grant exactly as to an unattested one, and
+MUST NOT raise a limit, widen an allowlist, or shorten the delay of §6.1(e) on the
+strength of an attestation.
+
+---

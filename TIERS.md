@@ -377,33 +377,83 @@ member list adds one index.
    which is degree 1 because NKM fixes `t = 2`. **At `k ≥ 3` the delta MUST be
    `δ(x) = Σ_{j=1}^{k−1} r_j·x^j` with every `r_j` fresh**, and the epoch record MUST
    carry one commitment per coefficient; SPEC_ISSUES.md records the same requirement
-   against NKM §7.18's `t = 3` option and proposes the same form.
+   against NKM §7.18's `t = 3` option and proposes the same form. This is
+   `frost-core`'s `keys::refresh`: `compute_refreshing_shares` builds a sharing of
+   **zero** with `min_signers − 1` fresh coefficients — `δ(0) = 0` by construction —
+   and `refresh_share` adds each member's `δ(i)` to its existing share
+   (`frost-core/src/keys/refresh.rs:58` and `:131`, crate 3.0.0). The function that
+   computes the deltas takes only the **public** key package, so the party that draws
+   `δ` learns nothing about any share; it MUST nonetheless be a trusted device, because
+   whoever knows `δ` can carry a revoked member's old share onto the new polynomial
+   (NKM §7.9's "a surviving device can hand `r` to a revoked one"). Passing a subset of
+   the identifiers is how a member is dropped, which is how §7.4's rotation removes
+   grants. `refresh` cannot change `k` and cannot add an identifier — that is step 4.
 3. **The grant's share is `f'(x_g)`** at a fresh index `x_g` that has never been used
    in this group (§2.2).
-4. **No party may reach `k` during the issue.** The grant's share is an evaluation of
-   `f'` at a new point, which requires contributions weighted by `k` indices, and
-   those contributions MUST be blinded. **A party MUST NOT receive another party's
-   Lagrange-weighted contribution in any form from which that party's share can be
-   recovered.** A raw `λ_i(x_g)·s_i` is such a form: `λ_i(x_g)` is publicly
-   computable, so the contribution *is* the share. In particular the issuing trusted
-   device, which holds `T = k − 1` or more, MUST NOT act as the point where
-   contributions are summed in the clear; a co-signer's contribution is exactly the
-   unit it is missing. NKM §7.18's "combine them on one of the two" is sound in its
-   own setting, where the two combining devices already reconstruct by assumption and
-   are both the user's own hardware. It MUST NOT be carried into this document.
+4. **The new index is issued by the repairable threshold scheme, and no party reaches
+   `k` while it runs.** `f'(x_g)` is `Σ_i ζ_i(x_g)·s_i` over a set of `k` indices, and a
+   raw `ζ_i(x_g)·s_i` **is** `s_i`, because `ζ_i(x_g)` is publicly computable. The
+   contributions MUST therefore be blinded, and the construction that blinds them is
+   the **repairable threshold scheme (RTS)** of *A Survey and Refinement of Repairable
+   Threshold Schemes* (Laing and Stinson, IACR ePrint 2017/1155), implemented as
+   `frost-core`'s `keys::repairable` and re-exported by `frost-secp256k1-tr` — the
+   ciphersuite crate NKM §7.4 already names. The issue MUST follow it:
+
+   - **Helpers: any set of indices of total weight `k`.** `repair_share_part1`
+     rejects a helper set smaller than the group's threshold
+     (`frost-core/src/keys/repairable.rs:111`–`119`). The set MUST include the
+     initiating trusted device's `T` indices, so by `T < k` (§4.3) it always contains
+     at least one co-signer. **`x_g` MUST NOT be a helper**: `ζ_i` is taken over the
+     helper set evaluated at `x_g`, and an `x_g` inside the set drives it to zero.
+     §2.2's never-reuse rule already guarantees this.
+   - **Part 1 — pairwise deltas summing to zero.** Each helper index `i` splits
+     `ζ_i(x_g)·s_i` into `k` additive parts `δ_{i→j}`, one for every helper `j`
+     including itself: `k − 1` drawn uniformly at random and the last set so that
+     `Σ_j δ_{i→j} = ζ_i(x_g)·s_i` (`compute_last_random_value`, `:135`–`165`). It sends
+     `δ_{i→j}` to helper `j` and keeps `δ_{i→i}`. These travel helper-to-helper over
+     the members' existing peer channel and never enter the QRST session.
+   - **Part 2 — one masked sum per helper.** Helper `j` computes `σ_j = Σ_i δ_{i→j}`
+     (`repair_share_part2`, `:170`–`178`) and sends it to the new device. A party
+     holding several helper indices MUST send the sum of its own `σ_j` values as one
+     value, so that the number of masked sums the new device receives is the number of
+     helper **parties**, not of helper indices.
+   - **Part 3 — the new device sums.** `Σ_j σ_j = Σ_i ζ_i(x_g)·s_i = f'(x_g)`
+     (`repair_share_part3`, `:184`–`212`). It verifies the result against the new
+     epoch's commitments before storing (NKM §3.3's P4 check, generalised per step 2).
+   - **Nobody learns anyone else's share.** Helper `i`'s contribution is blinded by
+     `δ_{i→i}`, which `i` never sends, so no coalition of the remaining helpers can
+     recover `ζ_i(x_g)·s_i`. This is exactly the case §4.3 makes dangerous: the issuing
+     trusted device holds `T = k − 1` helper indices, receives only the co-signer's
+     random `δ` values, never receives `δ_{i→i}` and never receives the co-signer's
+     `σ`. It ends the issue holding weight `T`, exactly as it began.
+   - **The new device learns only its own share.** Each `σ_j` it receives is masked by
+     every other helper's randomness, so the sum is `f'(x_g)` and the parts say
+     nothing about any `s_i`. A coalition of the new device and `k − 1` helpers can
+     solve for the remaining share — but that coalition already holds `k` indices and
+     is the key by §2.1, so nothing is lost to it that it did not have.
+
+   NKM §7.18's "combine them on one of the two" is the **unblinded** version of part 2
+   and part 3 collapsed onto a contributor. It is sound only in its own setting, where
+   the two combining devices already reconstruct by assumption and are both the user's
+   own hardware. It MUST NOT be used here.
 5. **The group MUST NOT be re-dealt from a reconstruction to add a grant.**
    Reconstructing the nsec on one device and splitting it again produces a correct
-   result and is the only thing FROSTR implementations offer today, and it is
-   forbidden here: NKM §7.5a reserves reconstruction to disable and Re-split, and a
-   grant issue is neither. SPEC_ISSUES.md records that no FROSTR implementation
-   provides a reshare primitive that satisfies 2 to 4.
+   result, and it is what the only FROSTR-level operation on offer does
+   (`bifrost-rs`'s `rotate_keyset_dealer`). It is forbidden here: NKM §7.5a reserves
+   reconstruction to disable and Re-split, and a grant issue is neither. The
+   ciphersuite needs no reconstruction for any of steps 2 to 4 — `keys::refresh` and
+   `keys::repairable` are both non-reconstructing — so what is missing is a FROSTR
+   layer that exposes them, not a primitive. SPEC_ISSUES.md and the Status section
+   record which layer is missing what.
 6. **Delivery.** One QRST session, one payload, one Sender — the issuing trusted
    device — using the `frost-share` profile of NKM §3.3 in its unique-index form,
    with `index = x_g`. The Receiver performs the profile's P4 check against the new
    epoch's commitments, renders P5, and confirms (QRST §9.4). The SAS of QRST §6 and
    §9.2 is REQUIRED unless the pairing token reached the receiving app over a channel
    the issuing device controls, in which case the light flow of QRST §12.3 MAY be
-   used; QRST §12.3 states that condition and this document does not relax it.
+   used; QRST §12.3 states that condition and this document does not relax it. Step 4
+   produces one masked sum per helper party and the QRST session has one Sender;
+   **Appendix B** describes how the two are reconciled and is non-normative.
 7. **The grant is `admitted: false` on arrival** and cannot obtain a co-signature
    until admitted from a trusted device (NKM §7.1). Admission gates signing, not
    reconstruction.
@@ -1010,8 +1060,20 @@ the delta-polynomial reshare (NKM §7.9) and the recovery delay (NKM §7.10).
 [SPEC_ISSUES.md](SPEC_ISSUES.md) — the interpretations and gaps this document relies
 on.
 
-RFC 9591 (FROST). BIP-340. NIP-01, NIP-09, NIP-17, NIP-44, NIP-49, NIP-59. WebAuthn
-Level 3 (PRF extension). Apple App Attest. Google Play Integrity.
+RFC 9591 (FROST). BIP-340. NIP-01, NIP-09, NIP-17, NIP-40, NIP-44, NIP-49, NIP-59.
+WebAuthn Level 3 (PRF extension). Apple App Attest. Google Play Integrity.
+
+Thalia M. Laing and Douglas R. Stinson, *A Survey and Refinement of Repairable
+Threshold Schemes*, IACR ePrint [2017/1155](https://eprint.iacr.org/2017/1155) — the
+repairable threshold scheme of §5.1 step 4. The scheme is often named for Stinson and
+Wei, whose *Combinatorial Repairability for Threshold Schemes* (ePrint 2016/855) gives
+the family its name; the construction implemented here is the enrollment-protocol
+variant that the survey above presents, and it is the paper the implementation cites.
+
+[ZcashFoundation/frost](https://github.com/ZcashFoundation/frost) 3.0.0 —
+`frost-core/src/keys/refresh.rs` (the §5.1 step 2 delta) and
+`frost-core/src/keys/repairable.rs` (the §5.1 step 4 repair), re-exported by
+`frost-secp256k1-tr`, the ciphersuite crate NKM §7.4 names.
 
 FROSTR: [bifrost](https://github.com/FROSTR-ORG/bifrost) — `docs/PROTOCOL.md`,
 `docs/CRYPTOGRAPHY.md`, `docs/SECURITY.md`, `docs/GLOSSARY.md`;
@@ -1019,6 +1081,100 @@ FROSTR: [bifrost](https://github.com/FROSTR-ORG/bifrost) — `docs/PROTOCOL.md`,
 [igloo-server](https://github.com/FROSTR-ORG/igloo-server) — `docs/PEER_POLICIES.md`,
 `docs/AUTH_MATRIX.md`, `docs/SECURITY.md`;
 [bifrost-rs](https://github.com/FROSTR-ORG/bifrost-rs).
+
+## Appendix B — Delivering a repaired share under QRST (non-normative)
+
+Nothing in this appendix is normative. §5.1 fixes what must be true; this records
+how it is reconciled with QRST's one-Sender, one-payload session, and what that
+reconciliation assumes.
+
+**The problem.** §5.1 step 4 produces one masked sum `σ` per helper **party**. The
+helper set must reach weight `k` and must include the initiating trusted device's `T`
+indices, and `T < k`, so there are always at least two helper parties: one trusted
+device and at least one co-signer. QRST runs one session with one Sender and one
+PAYLOAD (QRST §4 P2, §11.4: "One session carries one PAYLOAD; there is no
+side-channel for additional profile messages"). Two or more parties must get material
+to the new device through a mechanism that carries one payload from one party.
+
+The initiating trusted device MUST NOT be the party that assembles them. It holds
+`T = k − 1` indices; a `σ` it can read, summed with the others, is `f'(x_g)`, and
+`T + 1 = k` is the key. Whatever the delivery does, the initiator carries the other
+helpers' contributions without being able to open them.
+
+### B.1 Out-of-band σ, the general form
+
+1. The initiating trusted device is the **QRST Sender** and runs the session exactly
+   as §5.1 step 6 describes: the QR or `frost://` token, the SAS of QRST §6 and §9.2
+   (or the §12.3 light flow where its channel condition holds), the release consent of
+   QRST §9.1, and one PAYLOAD carrying the `frost-share` fields and its own `σ`.
+2. **The SAS ceremony authenticates the burner once.** What a person compares is that
+   this Sender is talking to the device in front of them; the artefact it pins is the
+   Receiver's burner public key.
+3. Every other helper party gift-wraps its `σ` to **that same burner**, sealed and
+   signed with its peer key as recorded in the current epoch record. These wraps are
+   not QRST messages: they carry none of QRST §11.4's kinds, so a conforming QRST
+   implementation does not read them and QRST §13 does not count their senders as
+   responders.
+4. The new device holds the `σ` wraps as unvalidated candidates until the PAYLOAD
+   arrives with the member list, then discards every wrap whose seal signer is not a
+   helper named there, sums what remains with the Sender's own `σ`, and runs the P4
+   check. A missing or forged `σ` fails that check; the session is abandoned and
+   everything held is discarded (QRST §4 P6). The check cannot say *which* `σ` was
+   wrong, so the failure is reported as the session failing, not as a named party
+   misbehaving.
+5. A co-signer's release of its `σ` is authorised by the §7.2 rotation it already
+   voted for, not by a QRST §9.1 consent prompt. A co-signer has no user to prompt,
+   and the vote is the consent.
+
+**Where this is stronger than the SAS, and where it is weaker.** The other helpers'
+contributions are authenticated cryptographically, against peer keys in a signed epoch
+record — a stronger check than a five-digit code. What the SAS does and this does not
+is prove a *person* was present for those contributions; only the Sender's leg has a
+human in it. Since the co-signers' legs are machine-to-machine by construction, that
+is the right split, but it should not be described as "the SAS covers the transfer".
+
+**What this assumes about QRST, and why it may need a change.** It reads QRST §11.4's
+"there is no side-channel for additional profile messages (P2)" as governing QRST's
+own message set — the seven kinds of §11.4 within one session — rather than everything
+the Receiver's burner hears from anyone. Under the other reading, `σ` wraps addressed
+to the burner and carrying profile material **are** the side-channel that sentence
+forbids, and B.1 needs a normative QRST change. SPEC_ISSUES.md files this for the next
+QRST version with the text it would need. B.2 needs no such reading.
+
+### B.2 σ carried inside the single PAYLOAD, where it fits
+
+A variant that stays inside one payload under either reading of P2, at the cost of a
+size ceiling.
+
+Each other helper party NIP-44-encrypts its `σ` to the burner public key, signs the
+ciphertext with its epoch-record peer key, and hands both to the initiator. The
+initiator includes them as opaque entries in the one QRST PAYLOAD. It is a courier of
+blobs it cannot open: it never learns any other `σ`, so it never reaches `k`. QRST §4
+P3 already requires the mechanism not to parse the payload, so a payload with several
+sealed entries is one payload. The new device decrypts each entry, checks each
+signature against the member list in the same payload, sums, and runs the P4 check.
+
+It is bounded by QRST §4 P1's 2048-byte default, which NKM §3.3 adopts for
+`frost-share`. Measured against this repository's `payload_ceiling.py` sizing, with a
+`σ` entry of 358 bytes (signer pubkey, a NIP-44 v2 ciphertext of a 32-byte scalar,
+and a signature) and `k − 1` commitments:
+
+| Configuration | Helper parties | Payload | Against the 2048 B default |
+|---|---|---|---|
+| `k = 3`, `T = 2`, one co-signer helping | 2 | 834 B | Fits |
+| `k = 5`, `T = 2`, three co-signers helping | 4 | 1690 B | Fits |
+| `k = 7`, `T = 2`, five co-signers helping | 6 | 2546 B | **Over** |
+
+So B.2 is available to the default configuration of §4.4 and to the `k = 5` profile of
+§4.6, and stops being available around six helper parties — where the profile would
+have to declare a larger maximum under QRST §4 P1 and clients would then have to skip
+relays that cannot carry it (QRST §11.6). B.1 has no such ceiling, because each `σ` is
+its own wrap.
+
+**Which to prefer.** B.2 where it fits, because it needs no reading of P2 to be
+defended and no burner lifetime beyond the session's own. B.1 above that, accepting
+the QRST question filed in SPEC_ISSUES.md.
+
 
 ## Status
 

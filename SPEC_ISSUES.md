@@ -557,7 +557,7 @@ list). An implementer who counts peers rather than parties will miscount every r
 in §4 and §6, so the rule is stated where it can be tested rather than left to
 inference.
 
-### No FROSTR implementation has a reshare primitive, and the one on offer reconstructs
+### The reshare primitives exist in the ciphersuite; no FROSTR layer exposes them, and the one operation on offer reconstructs
 
 **Document:** NOSTR_KEY_MANAGEMENT.md
 **Section:** §7.9 (and §7.5a, §7.18, TIERS.md §5.1)
@@ -567,8 +567,9 @@ NKM §7.9 specifies rotation as a delta-polynomial reshare — `δ(x) = r·x`, `
 each member adding its own delta — and §7.5a states flatly that "rotation, share
 issuance, share-1 replication, changing a backup factor and server enrollment never"
 reconstruct. TIERS.md §5.1 builds grant issue on the same primitive, extended to
-evaluate the new polynomial at a new index. **Neither FROSTR implementation provides
-it, and the nearest thing that exists does the one thing §7.5a forbids.**
+evaluate the new polynomial at a new index. **No FROSTR layer exposes either
+operation, and the one thing on offer does what §7.5a forbids** — although, as below,
+the ciphersuite NKM §7.4 names has shipped both for several releases.
 
 - `bifrost` has a trusted dealer (`src/lib/package.ts`, `generate_dealer_package` →
   `create_dealer_set`) and full reconstruction (`src/lib/util.ts:104`, via
@@ -595,30 +596,58 @@ preference for citing rather than owning constructions. The second is the intend
 one and NKM should say so rather than leaving the reader to discover that the
 obvious library call is the forbidden operation.
 
-A second gap sits inside the first. Adding an index needs `f'` evaluated at a new
-point, which needs `k` Lagrange-weighted contributions, and `λ_i(x_g)` is publicly
-computable — so a raw contribution `λ_i(x_g)·s_i` *is* `s_i`. NKM §7.18 says the two
-contributing devices "combine them on one of the two — permissible because those two
-already reconstruct in this trust model", which is true at `t = 2` among the user's
-own hardware and false the moment the contributors are not all equally trusted. In a
-weighted group a trusted device holds `T = k − 1` and a co-signer's contribution is
-precisely the missing unit, so the naive combination hands one device the key.
-TIERS.md §5.1 step 4 forbids it and states the property that must hold; it does not
-specify the blinded construction, because there is no obvious one that also keeps a
-single QRST Sender (a designated combiner who is a contributor can strip any
-zero-sharing it participates in, and combining at the recipient makes the recipient
-the point where `k` contributions meet).
+**Both primitives exist in the ciphersuite NKM §7.4 already names, and this entry was
+filed before that was checked.** `frost-core` 3.0.0 ships:
 
-**Proposed fix:** NKM §7.9 should add, after step 4: "No FROSTR implementation
-currently offers this reshare. `bifrost` and `igloo-core` provide trusted dealing and
-reconstruction only; `bifrost-rs`'s `rotate_keyset_dealer` reconstructs the nsec
-before re-splitting and MUST NOT be used to perform a §7.9 rotation, which §7.5a
-declares non-reconstructing." NKM §7.18's "Adding a device" should add: "Combining
-the two contributions on one device is permissible here only because both are the
-user's own trusted hardware and any two of them already reconstruct. Where members
-are not equally trusted, a raw Lagrange-weighted contribution reveals the
-contributor's share and the combination MUST be blinded." A worked blinded
-construction is left open and is the thing this entry most wants written.
+- `keys::refresh` (`frost-core/src/keys/refresh.rs`) — exactly NKM §7.9's delta.
+  `compute_refreshing_shares` (`:58`) builds a Shamir sharing of **zero** with
+  `min_signers − 1` fresh coefficients, so `δ(0) = 0` by construction and the degree is
+  `k − 1` rather than 1; `refresh_share` (`:131`) adds each member's `δ(i)` to its
+  share. It takes only the *public* key package, so the party drawing `δ` learns
+  nothing. Passing a subset of identifiers drops the omitted members. Present since
+  `frost-core` 2.0.0 (trusted-dealer form) and 2.1.0 (DKG form), so it is in the
+  `frost-secp256k1-tr-unofficial` 2.2.0 that `bifrost-rs` already depends on
+  (`bifrost-rs/Cargo.toml:49`). It cannot change `min_signers` and cannot add an
+  identifier.
+- `keys::repairable` (`frost-core/src/keys/repairable.rs`) — the Repairable Threshold
+  Scheme of *A Survey and Refinement of Repairable Threshold Schemes* (Laing and
+  Stinson, IACR ePrint 2017/1155), which is what adds an index. Helpers split
+  `ζ_i(x)·s_i` into additive parts summing to it (`:135`), exchange them, sum into one
+  `σ` each (`:170`), and the recovering participant sums the `σ` values (`:184`).
+  Named `repair_share_step_1/2/3` in 2.x and `repair_share_part1/2/3` since 3.0.0
+  (`frost-core/CHANGELOG.md`, 3.0.0-rc.0 breaking changes).
+
+So the second gap this entry described — "there is no obvious blinded construction" —
+is wrong, and TIERS.md §5.1 step 4 now specifies RTS rather than only forbidding the
+unblinded form. Two things about RTS are worth recording because they are not in its
+own documentation. It is documented as repairing a **lost** share at an identifier
+already in the group, but `repair_share_part1` computes
+`compute_lagrange_coefficient(helpers, Some(participant), i)` and
+`repair_share_part3` never looks the participant up in the public key package
+(`frost-core/src/lib.rs:295`–`331`; `repairable.rs:184`–`212`), so it evaluates `f` at
+**any** point and adding a new index is the same call. And the participant MUST NOT be
+one of the helpers, or `ζ` is zero for that term — a condition the API does not check
+and TIERS.md §5.1 step 4 states as a MUST.
+
+What remains true is the first gap: NKM §7.18's "combine them on one of the two" is
+the unblinded version, sound at `t = 2` among the user's own hardware and wrong the
+moment the contributors are not equally trusted, since in a weighted group a trusted
+device holds `T = k − 1` and a co-signer's contribution is the missing unit.
+
+**Proposed fix:** NKM §7.9 should add, after step 4: "The delta of this section is
+`frost-core`'s `keys::refresh`; a client SHOULD use it rather than reimplement the
+delta. No FROSTR layer exposes it: `bifrost` and `igloo-core` offer trusted dealing
+and reconstruction only, and `bifrost-rs`'s `rotate_keyset_dealer` reconstructs the
+nsec before re-splitting, so it MUST NOT be used to perform a §7.9 rotation, which
+§7.5a declares non-reconstructing." NKM §7.18's "Adding a device" should add:
+"Combining the two contributions on one device is permissible here only because both
+are the user's own trusted hardware and any two of them already reconstruct. Where
+members are not equally trusted, a raw Lagrange-weighted contribution reveals the
+contributor's share, and the combination MUST instead use the repairable threshold
+scheme of `frost-core`'s `keys::repairable`, in which each helper's contribution is
+split into additive parts and only the joining device sees their sum." TIERS.md §5.1
+step 4 carries that construction in full; the gap that remains is at the FROSTR layer,
+and the Status section of TIERS.md states it as three upstream proposals.
 
 ### §7.6 requires the co-signer to see the event; FROSTR's signing message carries only hashes
 
@@ -714,6 +743,58 @@ deleted and NKM §7.9's two-tier structure declared inapplicable here — but th
 nothing in this document can cut off a compromised grant faster than a day, and
 §6.1(d)'s freeze becomes the only incident-response tool, which it was not designed
 to be.
+
+### §11.4's "no side-channel for additional profile messages" and multi-party share issue
+
+**Document:** QR_SECRET_TRANSFER.md
+**Section:** §11.4 (and §4 P2, §13; TIERS.md §5.1 step 6, Appendix B)
+**Kind:** ambiguity
+
+QRST §4 P2 says "One payload, one session … a session carries exactly one message
+with meaning to the profile", and §11.4 restates it in the imperative: "One session
+carries one PAYLOAD; there is no side-channel for additional profile messages (P2)."
+
+Both were written when a profile's payload came from one holder. TIERS.md §5.1 issues
+a share by the repairable threshold scheme, in which the joining device must receive
+one masked sum from each helper **party** — always at least two, one trusted device and
+one co-signer, because the helper set must reach weight `k` and a trusted device holds
+`T < k`. The initiating trusted device cannot collect them first: a masked sum it can
+read, added to the others, is the new share, and `T + 1 = k` is the key. So the
+material has to reach the joining device from more than one party, and the sentence
+above admits two readings.
+
+**Reading A, taken in TIERS.md Appendix B.1.** The sentence governs QRST's own message
+set — the seven kinds of §11.4, inside one session. Other protocols may address the
+same burner; their wraps carry none of those kinds, so a conforming QRST
+implementation does not read them, and §13 does not count their senders as responders
+because it counts HELLO and REQUEST specifically. Under this reading TIERS.md needs no
+QRST change: the QRST session still carries exactly one PAYLOAD from exactly one
+Sender, and NKM §3.3's "One Sender, either shard type" note still holds.
+
+**Reading B.** The sentence governs everything profile-relevant that reaches the
+Receiver, because §4 P4, P5 and §9.4 are all defined over "what was received" and
+assume the profile check can be run against the payload. Under this reading, `σ` wraps
+addressed to the burner **are** the forbidden side-channel, and Appendix B.1 is
+non-conforming.
+
+The practical difference is real but narrow: TIERS.md Appendix B.2 gives a variant in
+which every other helper's `σ` is sealed to the burner and carried as opaque entries
+*inside* the one PAYLOAD, which conforms under either reading. It is bounded by P1's
+2048-byte default — measured at 834 B for `k = 3`, 1690 B for `k = 5`, and 2546 B for
+`k = 7`, so it stops fitting around six helper parties — above which only Reading A
+works without the profile declaring a larger maximum.
+
+**Proposed fix, for the next QRST version:** §11.4's sentence should read "One session
+carries one PAYLOAD; there is no side-channel for additional *QRST* messages (P2). A
+profile whose payload is assembled from several holders MAY have those holders deliver
+their contributions to the Receiver's burner outside the session, provided the
+contributions carry none of this section's kinds, the Receiver validates each against
+material delivered in the PAYLOAD, and the profile's P4 check is run over the assembled
+result." §4 P2 should add: "A profile MAY define contributions that reach the Receiver
+outside the session; P2 constrains the session's own messages, and the profile's P4
+check MUST cover whatever the contributions assemble into." Without one of these, a
+profile needing more than one contributor has to fit every contribution inside the
+payload and inherits P1's ceiling as a cap on its threshold.
 
 ## Resolved
 

@@ -337,7 +337,7 @@ With two trusted devices and two live grants, `N = 8`:
 | 7 | `G1` | Grant |
 | 8 | `G2` | Grant |
 
-### 4.5 Every signing set of the reference configuration
+### 4.5 Every signing set of the reference configuration (Profile A)
 
 Minimal authorised sets — those of weight `≥ k` with no authorised proper subset.
 There are thirteen. A set is listed once; adding any further party to a listed set
@@ -529,9 +529,10 @@ member list adds one index.
    - **Nobody learns anyone else's share.** Helper `i`'s contribution is blinded by
      `δ_{i→i}`, which `i` never sends, so no coalition of the remaining helpers can
      recover `ζ_i(x_g)·s_i`. This is exactly the case §4.3 makes dangerous: the issuing
-     trusted device holds `T = k − 1` helper indices, receives only the co-signer's
-     random `δ` values, never receives `δ_{i→i}` and never receives the co-signer's
-     `σ`. It ends the issue holding weight `T`, exactly as it began.
+     trusted device holds `T` of the `k` helper indices — `k − 1` of them at the
+     reference configuration of §4.4 — receives only the co-signers' random `δ` values,
+     never receives any `δ_{i→i}`, and never receives another party's `σ`. It ends the
+     issue holding weight `T`, exactly as it began.
    - **The new device learns only its own share.** Each `σ_j` it receives is masked by
      every other helper's randomness, so the sum is `f'(x_g)` and the parts say
      nothing about any `s_i`. A coalition of the new device and `k − 1` helpers can
@@ -1085,8 +1086,9 @@ This is normative and is the point of the section.
   co-signer MUST be refused by the client: that operator would hold one index and the
   ciphertext of `T` more, which is the same concentration NKM §7.12 warns of for the
   blob and share 1 on one host.
-- **A backup is worth a trusted device to whoever opens it.** By §4.3, `T = k − 1` at
-  the reference configuration, so the factor plus one co-signer is the key. The factor
+- **A backup is worth a trusted device to whoever opens it.** At §4.4's reference
+  configuration `T = k − 1`, so the factor plus one co-signer is the key; under §4.6's
+  Profile B it is the factor plus `k − T` co-signers. The factor
   MUST be treated by the client as material of the same sensitivity as a trusted
   device's storage, and the screen that presents it MUST say so rather than describing
   it as "a backup". §7.5 adds the other half: whoever restores from it can veto, approve
@@ -1197,7 +1199,7 @@ line are cited beside it.
 | Threat | Raw nsec pasted | NIP-46 to a signer app | This document |
 |---|---|---|---|
 | Malicious web app | Holds the key permanently; there is nothing to revoke and no way to learn it happened. | Cannot take the key, but signs whatever the signer's policy permits, for as long as the session stands. | Holds one weight-1 grant that reaches `k` only with every co-signer or a trusted device, signs no destructive kind (§6.1(b)), expires, and is dropped at the next rotation (§3.3). |
-| Compromised trusted device | Is the key, totally and permanently. | Is the key if that device runs the signer; otherwise one revocable session. | Holds `T = k − 1`: one unit short, delayed and vetoable on trusted-only kinds (§6.1(e)), cut off immediately by §7.1 and rotated out by §7.2. |
+| Compromised trusted device | Is the key, totally and permanently. | Is the key if that device runs the signer; otherwise one revocable session. | Holds `T`, short of `k` by §4.3, so it needs co-signers it cannot control; delayed and vetoable on trusted-only kinds (§6.1(e)), cut off immediately by §7.1, rotated out by §7.2. |
 | Compromised co-signer(s) | No such party exists. | The signer is the only party, so compromising it is compromising the key. | One index each and `n_s < k`, so they neither sign nor rotate alone — but with the live grants they reach `k` (§4.5 sets 10–13), which §7.3 states as accepted. |
 | Malicious grant holder | No analogue; the application was given the key. | Its session signs whatever the signer allows, for as long as the user leaves it connected. | Weight 1, allowlisted kinds only, needs every co-signer or a trusted device, and ends at its expiry or the next rotation, whichever comes first (§5.2). |
 | Grant holder colluding with co-signers | No analogue. | No analogue: one party holds everything, so there is nobody to collude with. | Reaches `k` and is therefore the key (§4.5 sets 10–13); the live-grant budget of constraint (2) is the only bound, and §7.3 refuses to hide it. |
@@ -1378,8 +1380,8 @@ side-channel for additional profile messages"). Two or more parties must get mat
 to the new device through a mechanism that carries one payload from one party.
 
 The initiating trusted device MUST NOT be the party that assembles them. It holds
-`T = k − 1` indices; a `σ` it can read, summed with the others, is `f'(x_g)`, and
-`T + 1 = k` is the key. Whatever the delivery does, the initiator carries the other
+`T` indices and the helper set reaches `k`; a `σ` it can read, summed with the others,
+is `f'(x_g)`, and `T` indices plus that share is a set that reconstructs. Whatever the delivery does, the initiator carries the other
 helpers' contributions without being able to open them.
 
 ### B.1 Out-of-band σ, the general form

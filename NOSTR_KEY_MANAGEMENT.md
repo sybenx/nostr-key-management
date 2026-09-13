@@ -248,6 +248,10 @@ Registered against QRST §5. Gives a joining device a single threshold share —
 share for a device quorum (§7.18). One payload either way; the `index` field says
 which, and the paste-delivered form uses the `frost://` carrier of QRST §12.3.
 
+> Non-normative pointer: [TIERS.md](TIERS.md) defines a third use of this profile — a
+> time-limited **grant** index issued to an untrusted app — on top of this document
+> and QRST, changing neither.
+
 | QRST requirement | This profile |
 |---|---|
 | Payload encoding | The 32-byte share scalar, 64 lowercase hex characters, plus `index`, `group_pub`, `commitment`, `epoch`, `group_secret`, and `CK` only when the receiver is trusted (§7.7). `index = 2` is the co-signer replica; `index ≥ 1` unique is a quorum share. Carried in the QRST PAYLOAD (kind 24405). |

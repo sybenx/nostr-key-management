@@ -147,4 +147,6 @@ becomes interesting.
   Self-contained; start here.
 - [NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md) — storage, backup, threshold
   signing, and the two payload profiles.
+- [TIERS.md](TIERS.md) — one key split across trusted devices, co-signing servers
+  and temporary app grants, as a single weighted FROST group.
 - [SPEC_ISSUES.md](SPEC_ISSUES.md) — disagreements and suspected errors.

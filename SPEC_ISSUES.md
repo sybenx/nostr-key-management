@@ -36,7 +36,7 @@ Add each entry under its own heading, newest at the bottom, using this shape:
 ```
 ### <short title>
 
-**Document:** QR_SECRET_TRANSFER.md | NOSTR_KEY_MANAGEMENT.md
+**Document:** QR_SECRET_TRANSFER.md | NOSTR_KEY_MANAGEMENT.md | TIERS.md
 **Section:** §<number> (and any others it touches)
 **Kind:** ambiguity | suspected error | design disagreement
 
@@ -510,6 +510,52 @@ should add: "Independence is not the only cost. Because all servers replicate sh
 1, each additional server is an additional place share 1 can be stolen from while
 `t` stays at 2. Servers buy availability and are paid for in exposure; enroll the
 fewest that meet your availability need."
+
+### A multi-index party has no representation in bifrost's message format
+
+**Document:** TIERS.md
+**Section:** §2.3 (and NOSTR_KEY_MANAGEMENT.md §7.4)
+**Kind:** ambiguity
+
+TIERS.md §2 gives a party weight by giving it several indices. Neither FROSTR
+implementation can express that as one peer. In `bifrost`, a node is built from
+exactly one `SharePackage` (`src/class/client.ts:119`–`135`) and its BIP-340
+identity is the pubkey of that share's secret (`src/class/signer.ts:79`); the
+dealer emits one member record per index with the same derivation
+(`src/lib/package.ts:45`–`62`). Index and pubkey are therefore in bijection, and
+`get_member_indexes` asserts it — `indexes.length === pubkeys.length`
+(`src/lib/util.ts:92`–`101`). `bifrost-rs` is the same by construction: the signing
+device holds one share and a `HashMap<String, u16>` from peer pubkey to a single
+index (`crates/bifrost-signer/src/lib.rs:663`–`668`), resolved by first match
+(`crates/bifrost-signer/src/util.rs:22`–`41`), and a member's pubkey *is* that
+index's verifying share (`crates/frostr-utils/src/keyset.rs:112`–`152`).
+
+Two readings were available. Either weights need a protocol change — a peer
+identity decoupled from the share, carrying a set of indices — or a weight-`T`
+party runs `T` conforming peers and "party" lives only in the client's own records.
+**The second reading was taken**, because the first would change the key schedule:
+the share secret is the transport secret, so a peer identity that is not a share
+pubkey cannot be routed, and `/sign/req`'s `nonces` array is keyed by `idx` with one
+nonce pool per peer index, so a multi-index peer would need per-index pools behind
+one identity anyway. Nothing is gained and the wire format changes.
+
+What the second reading costs, and what TIERS.md §2.3 therefore requires: **no
+FROSTR message says that two pubkeys are one party.** `/sign/req` carries
+`members: number[]` and `/sign/res` carries a single `idx`, so a coordinator sees a
+weight-2 trusted device as two independent signers and a `gid` computed over sorted
+member pubkeys cannot distinguish "four parties of weight 1" from "two parties of
+weight 2". Every quorum rule that speaks of parties or tiers — TIERS.md §4's
+inequalities, §6's per-tier policy, §7's rotation authority — is unenforceable from
+the group package alone and must be evaluated against the epoch record, which is
+this project's structure and not FROSTR's.
+
+**Proposed fix:** none against `bifrost`; the awkwardness is inherent and the
+convention works. TIERS.md §2.3 states the determination and its two normative
+consequences (weights are peer multiplicity; party identity lives in the epoch
+record and quorum rules are evaluated against it, never against the raw member
+list). An implementer who counts peers rather than parties will miscount every rule
+in §4 and §6, so the rule is stated where it can be tested rather than left to
+inference.
 
 ## Resolved
 

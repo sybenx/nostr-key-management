@@ -9,7 +9,8 @@ Nostr identity
 > frozen. It references them and requires no change to their normative sections. It
 > defines one thing they do not: how a single Nostr key is split across **trusted
 > devices**, **co-signing servers**, and **temporary app grants** at different
-> weights, in one flat FROST group.
+> weights, in one flat FROST group, and how an application signs through a trusted
+> device without holding any of it.
 
 Key words MUST, MUST NOT, SHOULD, MAY are normative. A section reference with no
 prefix is to this document; references to the two frozen specifications are always
@@ -142,6 +143,9 @@ Every index in the group belongs to exactly one tier, recorded per index in the
 epoch record (§5.3). A party's tier is the tier of its indices; a party MUST NOT
 hold indices of two tiers.
 
+An application connected by a session (§5.0) holds no index and so has no tier. It
+appears nowhere in §4's accounting.
+
 ### 3.1 Trusted device — weight `T`
 
 A native application on hardware the user owns, in the sense of NKM §7.1's
@@ -157,7 +161,8 @@ A native application on hardware the user owns, in the sense of NKM §7.1's
 - A browser origin MUST NOT hold a trusted-device index, at any storage level. NKM
   §7.1 fixes every browser-origin device as `restricted`, and NKM §2.1 records that
   a browser is never level 3 because it has no authenticator-bound decryption. A
-  browser that needs to act holds a grant (§3.3).
+  browser that needs to act opens a session with a trusted device (§5.0), or holds a
+  grant (§3.3) where it must act with no trusted device reachable.
 - A trusted device MAY issue a grant (§5), MAY revoke one, and MAY initiate a
   rotation (§7). It cannot complete any of these alone; §4 and §7 say what else is
   required.
@@ -466,12 +471,77 @@ survives both profiles.
 
 ---
 
-## 5. Grants
+## 5. Sessions and grants
+
+### 5.0 Sessions
+
+**An application does not need a share to sign.** A **session** is a connection in
+which an untrusted application — a web client, a third-party app — holds no index at
+all and sends each request to a trusted device, which applies its own policy and, if
+the request passes, signs it with co-signers exactly as it signs for itself. **A
+session is the default way to log an application in.** A grant (§5.1) is the optional
+mode for an application that must sign while no trusted device is reachable.
+
+- **Shape.** NIP-46's. The application holds a client keypair of its own; `sign_event`,
+  `nip44_encrypt`, `nip44_decrypt` and the other NIP-46 methods travel to the trusted
+  device over relays, encrypted between that client key and a signer key the trusted
+  device generates for sessions. The signer key MUST NOT be a share key: a share's
+  pubkey is its peer identity (§2.3) and changes at every rotation, which would end
+  every session each time a grant is issued.
+- **Pairing.** The trusted device MUST learn the application's client pubkey from the
+  application itself — a `nostrconnect://` QR it scans, or a token pasted from the
+  application's screen — and never from a relay-delivered message alone. It MUST show
+  the application's name, the kinds the session may sign, and whether it may decrypt,
+  and MUST obtain the user's confirmation on the device.
+- **Policy is the trusted device's, and it MUST apply at least this much.** A kinds
+  allowlist per session, with the same default as §6.1(a). Every kind on §6.1(b)'s
+  trusted-only list refused unless the user approves that individual request on the
+  trusted device. Decryption refused unless the session was granted it at pairing, with
+  §6.0.4's three values and the same warning for `all`. Per-session rate limits no
+  looser than §6.1(c)'s grant limits. A session MAY carry an expiry and MUST end when the
+  user ends it, when its trusted device is revoked or removed, or at that expiry.
+- **What the co-signers see is the trusted device.** A session's signing set is the
+  trusted device and co-signers, and the requesting index is the trusted device's. Every
+  co-signer applies trusted-tier policy to it: §6.0's event visibility, §6.1(c)'s
+  counters for a trusted index, §6.1(d)'s freeze, and §6.1(e)'s hold on a trusted-only
+  kind requested with one trusted device in the set. A deletion approved on the device
+  for a session is held and vetoable exactly as one the device originated. A co-signer
+  cannot tell a session's request from the device's own and MUST NOT be asked to treat
+  it differently. §6.1(e)'s hold is a hold on a *signature*, attached to the kind; it is
+  not the rotation delay of §7.2, which never applies to a session.
+- **A session issues nothing and triggers no rotation.** Opening, using or ending one
+  adds no index, changes no member list, advances no epoch, counts toward neither `N`
+  nor `W_g`, and does not stale a backup. §5.1 to §5.3, §7.2's authority and delay, and
+  §8.2's republication do not apply to it. Ending a session is immediate and local: the
+  trusted device forgets the client key. A session survives rotations, because its
+  signer key is not a share key.
+
+**Why a session is the default.** It puts no share on a platform the user does not
+control, so interception of its pairing costs nothing that a rotation cannot fix —
+there is nothing to reconstruct from. It uses none of the grant budget, adds no signing
+set to §4.5, needs no co-signer to be reachable beyond the ones the trusted device
+already signs with, and is opened and ended without a reshare.
+
+**What it costs is the trusted device.** Every request needs a trusted device online,
+reachable over relays, and unlocked to NKM §2.2's policy. An application that must post
+while the user's phone is off or out of reach cannot be served by a session. That is
+what a grant is for, and it is paid for in a share on an untrusted platform, a unit of
+live grant weight, a signing set without a trusted device (§4.5), and every co-signer's
+availability (§4.3). A client MUST offer a session first and MUST present a grant as
+the phone-free alternative, with those costs, rather than as an equivalent choice.
+
+**Against NIP-46 to a signer app.** A session is NIP-46 to a signer that is a trusted
+device. The difference is in what that signer holds: `T < k` rather than the whole key,
+so the session's requests reach a signature only through co-signers the application
+and the signer device do not control, and a compromised trusted device is bounded by §6
+and §7 rather than being the key.
 
 ### 5.1 Issue
 
 A grant is issued by a trusted device, as a reshare to the next epoch whose new
-member list adds one index.
+member list adds one index. A grant is optional: a client MUST NOT issue one where a
+session (§5.0) was asked for, and **nothing in this section applies to a session**,
+which holds no share and is not a rotation.
 
 1. **Authority.** A trusted device initiates. The operation is a rotation in the
    sense of §7 and MUST satisfy §7's authority in full: the new epoch record is
@@ -896,7 +966,9 @@ co-signer is unaffected by it.
 ### 7.2 Authority for a rotation
 
 A rotation — a new epoch under §5.1's reshare, whether to revoke an index, to add a
-trusted device, to issue a grant, or to drop expired ones — MUST satisfy all three:
+trusted device, to issue a grant, or to drop expired ones — MUST satisfy all three.
+A session (§5.0) is not a rotation: opening, using and ending one needs none of the
+three, and no delay in this section applies to it.
 
 1. **Initiation by a trusted device.** A co-signer MUST NOT initiate, and a grant MUST
    NOT initiate or vote (§3.3).
@@ -1198,13 +1270,13 @@ line are cited beside it.
 
 | Threat | Raw nsec pasted | NIP-46 to a signer app | This document |
 |---|---|---|---|
-| Malicious web app | Holds the key permanently; there is nothing to revoke and no way to learn it happened. | Cannot take the key, but signs whatever the signer's policy permits, for as long as the session stands. | Holds one weight-1 grant that reaches `k` only with a trusted device, with every co-signer, or with a co-signer and another live grant (§4.5 sets 6–13), signs no destructive kind (§6.1(b)), expires, and is dropped at the next rotation (§3.3). |
+| Malicious web app | Holds the key permanently; there is nothing to revoke and no way to learn it happened. | Cannot take the key, but signs whatever the signer's policy permits, for as long as the session stands. | By default holds no share: a session (§5.0) signs only what the trusted device approves, through co-signers, and ends the moment the user ends it. Where given a grant instead, holds one weight-1 grant that reaches `k` only with a trusted device, with every co-signer, or with a co-signer and another live grant (§4.5 sets 6–13), signs no destructive kind (§6.1(b)), expires, and is dropped at the next rotation (§3.3). |
 | Compromised trusted device | Is the key, totally and permanently. | Is the key if that device runs the signer; otherwise one revocable session. | Holds `T`, short of `k` by §4.3, so it needs a co-signer or a live grant it does not control (§4.5 sets 2–9); delayed and vetoable on trusted-only kinds where a co-signer is in the set (§6.1(e)), cut off immediately by §7.1, rotated out by §7.2. |
 | Compromised co-signer(s) | No such party exists. | The signer is the only party, so compromising it is compromising the key. | One index each and `n_s < k`, so they neither sign nor rotate alone — but with the live grants they reach `k` (§4.5 sets 10–13), which §7.3 states as accepted. |
 | Malicious grant holder | No analogue; the application was given the key. | Its session signs whatever the signer allows, for as long as the user leaves it connected. | Weight 1, allowlisted kinds only, needs a trusted device, every co-signer, or a co-signer and another live grant (§4.5 sets 6–13), and ends at its expiry or the next rotation, whichever comes first (§5.2). |
 | Grant holder colluding with co-signers | No analogue. | No analogue: one party holds everything, so there is nobody to collude with. | Reaches `k` and is therefore the key (§4.5 sets 10–13); the live-grant budget of constraint (2) is the only bound, and §7.3 refuses to hide it. |
 | Malicious signer app | Has the key the moment it is pasted in. | Holds the whole key by design; its scoping is its own code and it may ignore it. | Holds at most a grant, or `T` if the user made it a trusted device; the policy that binds it runs on parties it does not control (§6). |
-| Phishing of a consent screen | Yields the key; the screen is the only control and the attacker wrote it. | Yields a connection the user believes is scoped, where the scope is asserted by the page requesting it. | Yields at most one grant at its allowlist — except a fake backup-factor screen, which yields a trusted device's weight (§8.3) and is the residual. |
+| Phishing of a consent screen | Yields the key; the screen is the only control and the attacker wrote it. | Yields a connection the user believes is scoped, where the scope is asserted by the page requesting it. | Yields at most a session or one grant at its allowlist — except a fake backup-factor screen, which yields a trusted device's weight (§8.3) and is the residual. |
 | Device loss | Is the key, behind whatever the device's storage offered; no revocation exists. | Is one revocable session, or the key if the lost device ran the signer. | Weight `T` at NKM §2.1 level 3, inert until a second party is taken; refusal is immediate (§7.1) and rotation removes it (§7.2). |
 
 **The two rows that are not improvements.** "Grant holder colluding with co-signers"
@@ -1272,6 +1344,9 @@ user having deleted their history.
   trusted-only (§6.1(b))**, so overwriting long-form posts and lists is closed too. This
   is the clause that covers the kinds nobody has thought of yet, which a per-kind
   denylist cannot.
+- **A session gets no destructive kind without the user approving that request on the
+  trusted device (§5.0)**, and an approved one is then held by §6.1(e) like any other
+  trusted-only kind from a single trusted device.
 - **The reference allowlist is append-only (§6.1(a)).** Kinds `1`, `6`, `7`, `13`, `16`
   add events; none destroys one. A grant at the reference policy has no destructive
   operation available to it at all.
@@ -1343,7 +1418,7 @@ the delta-polynomial reshare (NKM §7.9) and the recovery delay (NKM §7.10).
 [SPEC_ISSUES.md](SPEC_ISSUES.md) — the interpretations and gaps this document relies
 on.
 
-RFC 9591 (FROST). BIP-340. NIP-01, NIP-09, NIP-17, NIP-40, NIP-44, NIP-49, NIP-59.
+RFC 9591 (FROST). BIP-340. NIP-01, NIP-09, NIP-17, NIP-40, NIP-44, NIP-46, NIP-49, NIP-59.
 WebAuthn Level 3 (PRF extension). Apple App Attest. Google Play Integrity.
 
 Thalia M. Laing and Douglas R. Stinson, *A Survey and Refinement of Repairable

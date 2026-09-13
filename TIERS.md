@@ -537,16 +537,120 @@ co-signer that does not enforce this section is not a co-signer under §3.2.
 ### 6.0 Precondition — the co-signer MUST see what it signs
 
 **A co-signer MUST refuse any sign request that does not carry the full unsigned
-event.** It serialises and hashes the event itself per NIP-01 and signs only its own
-computed hash. A request carrying a bare 32-byte sighash, or any digest the
-co-signer did not derive, MUST be refused for every grant index without exception,
-and SHOULD be refused for every index.
+event, from every index without exception.** It serialises and hashes the event
+itself per NIP-01 and signs only its own computed hash. A bare 32-byte sighash, or
+any digest the co-signer did not derive, is refused.
 
-This is NKM §7.6's rule and it is restated because every other rule in this section
-depends on it: a kinds allowlist over a request that does not contain a kind is not
-a policy, it is a comment. SPEC_ISSUES.md records that FROSTR's native signing
-message carries sighashes only, and that the one HTTP surface which does accept a
-full event also accepts a bare hash.
+The rule covers trusted indices as well as grants, and this is not caution. §6.1(e)'s
+delay and veto fire on the **kind** of a trusted-only event requested with a single
+trusted device in the signing set, so a co-signer that will sign a bare hash for a
+trusted index has no delay path at all — the compromised-device case of §11.4 stops
+being a delayed attack and becomes an immediate one. The allowlist needs the kind; so
+does the delay.
+
+This is NKM §7.6's rule. SPEC_ISSUES.md records that FROSTR's native signing message
+carries sighashes only, and that the one HTTP surface which does accept a full event
+also accepts a bare hash. What follows is the wire this document needs instead.
+
+#### 6.0.1 The `/event` tag
+
+One additional message tag in bifrost's existing envelope:
+
+```
+/event/req   requester → co-signer   { events: [ <unsigned event>, … ] }
+/event/res   co-signer → requester   { results: [ { id, accepted, reason? }, … ] }
+```
+
+- An unsigned event is NIP-01's `{pubkey, kind, created_at, tags, content}`. **The
+  co-signer computes `id` itself** and MUST NOT accept an `id` the requester supplies;
+  the whole point is that the digest is derived from what was inspected.
+- The co-signer applies §6.1 to each event against the **requesting index** and answers
+  with the verdict. Refusing here rather than at `/sign/req` gives the requester a
+  reason it can put in front of a user, which bifrost's rejection path — a silent
+  timeout, chosen so that refusal reasons do not leak (`docs/PROTOCOL.md`, "Error
+  Handling") — does not.
+- On `accepted`, the co-signer caches the event (§6.0.2). On refusal it caches nothing.
+
+**This is additive.** The envelope `{tag, data, env}` is unchanged, no existing schema
+changes, and `bifrost`'s dispatch is a `switch` on `msg.method` with **no `default`
+arm** (`src/class/client.ts:174`–`205`), so a peer that has not implemented `/event`
+ignores the message and the requester sees the ordinary timeout. The existing peer
+authorisation filter (`_filter`, `:213`) applies to it unchanged, so an unknown or
+`recv`-denied peer cannot populate a cache.
+
+#### 6.0.2 The cache
+
+- **Keyed by `(id, requesting index)`.** An entry MUST NOT be usable by any index other
+  than the one that submitted it. Keyed by `id` alone, one grant rides another's
+  accepted event and the per-index allowlist and rate limits mean nothing.
+- **Short TTL.** Reference 120 seconds; a co-signer MUST NOT use more than 600 seconds,
+  QRST's own session lifetime. The window exists to cover one relay round trip and a
+  signing round, not to hold work.
+- **Bounded.** A co-signer MUST bound entries per index and evict oldest-first;
+  reference 32. An unbounded cache is a memory denial of service that costs a grant one
+  message per entry.
+- **Epoch-scoped.** Entries are discarded on entering a new epoch, with the grant
+  records of §5.3.
+- **A held round pins its event.** Where §6.1(e) holds a request for the delay, the
+  co-signer MUST retain that event for the whole window independently of the TTL, and
+  MUST name its kind and `id` in the notice it sends. A delay that expires against an
+  evicted entry fails open.
+- `created_at` is the requester's and MUST NOT be altered; an event submitted now and
+  signed at the end of a delay window carries its compose-time timestamp, which is
+  NKM §7.6's rule for an unsigned rumor held offline.
+
+#### 6.0.3 What `/sign/req` must then satisfy
+
+A co-signer MUST refuse the **whole session**, not the individual sighash, unless all
+of these hold:
+
+1. **No tweaks.** Every entry of `hashes` is a vector of exactly one element. bifrost's
+   `sighash_vec` is `[hex32].rest(hex32)` (`src/schema/sign.ts`), so a vector may carry
+   trailing tweaks; a tweak alters what is signed, is not expressible in a Nostr event,
+   and is therefore a bypass of everything `/event` validated. Refused from every index.
+2. **Every sighash matches a live cache entry** whose requesting index is the index
+   that sent this `/sign/req`, whose verdict was `accepted`, and whose TTL has not
+   lapsed.
+3. **Batches are checked element-wise.** `hashes` may carry many vectors, and §6.1(c)
+   counts each sighash rather than each session. One unmatched sighash refuses the
+   session.
+4. **`content` is not policy.** The session's `content` field is unvalidated free text
+   folded into the session id (`src/lib/session.ts:131`–`135`). A co-signer MUST NOT
+   read any permission from it.
+
+Refusing the session rather than the offending element is deliberate: a partial refusal
+would tell a requester which members of a batch passed, and bifrost has no channel to
+say so anyway.
+
+#### 6.0.4 ECDH carries no event, so it is gated by tier
+
+`/ecdh/req` carries `{gid, members, ecdh_pks}` (`docs/PROTOCOL.md`) and nothing a kind
+can be read from. There is no allowlist to apply, so the gate is the tier:
+
+- **A trusted index: allowed.** Subject to NKM §7.13's alerting and to §6.1(c)'s
+  per-index counters. A trusted device decrypts the user's own correspondence and there
+  is no narrower rule that would mean anything.
+- **A grant index: refused by default, and allowlisted per grant.** The policy named by
+  the grant's `policy_id` (§5.3) carries an `ecdh` field with exactly three values:
+
+  | Value | Effect |
+  |---|---|
+  | `none` | The default. Every `/ecdh/req` from that index MUST be refused. |
+  | `listed` | An enumerated set of peer public keys fixed at issue. Any `ecdh_pks` entry not on the list refuses the **whole** request; the co-signer MUST NOT answer the subset. |
+  | `all` | Any peer key, subject to NKM §7.13's restricted-origin ceilings, counted per index per §6.1(c). |
+
+  Widening is issuing a new grant (§5.2), never an edit.
+- **`listed` cannot receive gift wraps.** NKM §7.13 records that every incoming NIP-59
+  wrap uses a fresh random ephemeral key, so the `P` values a recipient derives against
+  are one-shot and unknowable at issue. `listed` covers NIP-04/44 conversations with
+  named peers and nothing else; a grant that must read NIP-17 DMs needs `all`.
+- **`all` is the user's whole DM history, not their new messages.** A grant at `all` can
+  derive a conversation key for every peer the user has ever corresponded with, past
+  messages included, bounded only by §6.1(c) and NKM §7.13's cumulative cap. A client
+  MUST present it in those terms.
+- A grant whose kinds allowlist carries `13` but whose `ecdh` is `none` can send DMs and
+  never read the replies. A client MUST warn at issue where the two are set
+  inconsistently.
 
 ### 6.1 The five rules
 
@@ -589,8 +693,9 @@ network identities (§2.3), so any counter not keyed on the index is trivially
 evaded by using another one. A co-signer MUST maintain, for each index in the
 current epoch, a signing-rate counter and MUST refuse rounds beyond the configured
 limit. Reference limits: a grant index, 60 signatures per rolling hour and 600 per
-rolling day; a trusted-device index, no ceiling but the alerting of NKM §7.13. ECDH
-limits are NKM §7.13's and are not restated. Exceeding a limit MUST be reported to
+rolling day; a trusted-device index, no ceiling but the alerting of NKM §7.13. Each
+sighash in a batch session counts once (§6.0.3). ECDH ceilings are NKM §7.13's, counted
+per index, and gated per tier by §6.0.4. Exceeding a limit MUST be reported to
 every trusted device as an NKM §7.17 `ALERT`; raising a limit for a live grant MUST
 require a trusted device and MUST NOT be automatic.
 

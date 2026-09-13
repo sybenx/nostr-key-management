@@ -49,15 +49,15 @@ Index hygiene: `k ≥ 3` (at `k = 2` no weighting is expressible), `N ≤ 255`
 never reused in a later epoch.
 
 ```
-  one group, threshold k = 3
+  one group, threshold k = 4
 
-  D1: [1][2]   D2: [3][4]   C1: [5]  C2: [6]
-  trusted      trusted      co-      co-
-  device       device       signer   signer
+  D1: [1][2]   D2: [3][4]
+  trusted      trusted
+  device       device
 
-  G1: [7]   G2: [8]
-  grant     grant
-  expires   expires
+  C1: [5]   C2: [6]   C3: [7]   G1: [8]
+  co-       co-       co-       grant
+  signer    signer    signer    expires
 ```
 
 ## The three tiers
@@ -95,14 +95,33 @@ issue or revoke grants, initiate or vote on a rotation, or act as a QRST Sender.
                      losing up to s co-signers
 (4)  2T >= k         two trusted devices sign with
                      no co-signer            [optional]
+(6)  T + W_cap < k   a trusted device and every
+                     grant it could issue never
+                     sign without a co-signer
+(7)  T + 1 + W_cap < k
+                     the same, counting the recovery
+                     share          [optional, off]
 ```
 
-`n_s` is the number of co-signers, `W_g` the total weight of live grants, and `s`
-the co-signer slack. `T < k` always holds: at `T ≥ k` a trusted device signs alone
-and no policy is ever consulted. (1) is also what stops co-signers rotating among
-themselves. (2) makes the grant budget a hard limit: a client refuses to issue a
-grant that would bring `W_g` to `k`, and counts an expired grant as live until the
-rotation that drops it.
+`n_s` is the number of co-signers, `W_g` the total weight of live grants, `W_cap`
+the cap on it that every co-signer enforces, and `s` the co-signer slack. (5) is
+Profile B's, below. `T < k` always holds: at `T ≥ k` a trusted device signs alone and
+no policy is ever consulted. (1) is also what stops co-signers rotating among
+themselves. A client counts an expired grant as live until the rotation that drops it.
+
+**(6) is why grants are capped** (TIERS §4.2). A trusted device may issue grants, and
+nothing can tell whether the app receiving one is the user's or the device's own. A
+compromised device could otherwise issue itself grants until its own weight reached
+`k`, and then sign and reconstruct with no co-signer in the set. Co-signers refuse
+any issue past the cap, so a device and every grant it can create stay at least one
+co-signer short. (6) implies (2). The earlier `k = 3` reference broke it — one
+self-issued grant was enough — and is kept as TIERS Appendix C.
+
+**(7) counts the recovery share** (TIERS §4.2, §8.4). Opened, the recovery share
+weighs 1, so without (7) a trusted device, the recovery phrase and a self-issued grant
+reach `k` at both reference profiles. With (7), they don't, and a tie between two
+holders of a device and the phrase is a real freeze. It costs every grant at `T = 2`
+under Profile A, and one of Profile B's two, so it is off by default.
 
 **A lone weight-1 grant needs every co-signer** (TIERS §4.3). No choice of `k`,
 `T` and `n_s` lets it lose one and still sign. A grant's availability is the
@@ -113,29 +132,28 @@ so. Raising a grant's weight buys slack by buying authority, so clients default 
 ## Reference configuration (Profile A)
 
 ```
-k = 3    T = 2    n_s = 2    W_g <= 2    s = 1
+k = 4    T = 2    n_s = 3    W_cap = 1    s = 1
 ```
 
-With two trusted devices and two grants, `N = 8`, laid out as in the drawing
-above. TIERS §4.5 lists the thirteen minimal signing sets:
+With two trusted devices and the one grant, `N = 8`, laid out as in the drawing
+above. `T = k − 2`. TIERS §4.5 lists the fourteen minimal signing sets:
 
 | Sets | Members | Weight | What it is |
 |---|---|---|---|
 | 1 | `D1 + D2` | 4 | Two trusted devices, no server. The recovery path of (4). |
-| 2–5 | a trusted device + a co-signer | 3 | Ordinary signing. |
-| 6–9 | a trusted device + a grant | 3 | A grant finishing with a trusted device, no co-signer reachable. |
-| 10–11 | `C1 + C2 +` a grant | 3 | **Collusion** if the co-signers abandon policy. With honest co-signers it is also how a single grant signs without a trusted device, and every request is checked. |
-| 12–13 | a co-signer + `G1 + G2` | 3 | **Collusion.** The cheapest hostile set. |
+| 2–7 | a trusted device + two co-signers | 4 | Ordinary signing. |
+| 8–13 | a trusted device + a co-signer + `G1` | 4 | The grant finishing with a trusted device, one co-signer checking it. |
+| 14 | `C1 + C2 + C3 + G1` | 4 | **Collusion** if all three co-signers abandon policy. With honest co-signers it is how the grant signs with no trusted device, and every request is checked. |
 
-Nothing of weight 2 signs: not one trusted device, not both co-signers, not both
-grants, not a co-signer with a grant.
+Nothing of weight 3 signs: not a trusted device with one co-signer, not a trusted
+device with the grant, not all three co-signers, not the grant with two co-signers.
 
-Sets 10 to 13 are real. They reach `k`, so they can sign anything and reconstruct.
-Sets 10 and 11 need two independently administered co-signers both abandoning
-policy, plus a live grant. Sets 12 and 13 need one co-signer and both live grants.
-A one-grant budget removes 12 and 13. Running one co-signer with one grant removes
-all four, at the cost of any slack for the trusted device; a client presents that
-as a choice.
+Set 14 is real. It reaches `k`, so it can sign anything and reconstruct. It needs
+three independently administered co-signers all abandoning policy, plus the live
+grant. Running no grant removes it, and sessions still serve every app. Running two
+co-signers removes it too, at the cost of any slack for the trusted device; a client
+presents that as a choice. Every set that needs the grant contains a co-signer; the
+only set without one is set 1.
 
 [`tiers_check.py`](tiers_check.py) enumerates minimal sets for any membership and
 is tested against the hand-built vectors in [vectors/](vectors/).
@@ -147,7 +165,7 @@ presented as a trade rather than a security level (TIERS §3.5). Profile B decli
 it:
 
 ```
-k = 5    T = 2    n_s = 4    W_g <= 4    s = 1
+k = 5    T = 2    n_s = 4    W_cap = 2    s = 1
 2T = 4 < k
 ```
 
@@ -160,28 +178,41 @@ Its full benefit needs its own condition:
 
 where `D` is the number of trusted devices. Where (5) holds, every rule below
 applies to every signature the identity ever makes. At `k = 5` it holds with one
-trusted device and up to two grants, or two trusted devices and no grants. Two
-trusted devices with two grants need `k = 7, T = 2, n_s = 6, W_g ≤ 2`. (5) is a
-property of the current membership, so a client re-checks it at every rotation
-that adds a trusted device or issues a grant, and refuses the operation that breaks
-it.
+trusted device and any grants the cap allows, or two trusted devices and no grants.
+Two trusted devices with two grants need `k = 7, T = 2, n_s = 6, W_cap = 2`. (5) is a
+property of the current membership, so a client re-checks it at every rotation that
+adds a trusted device or issues a grant, and refuses the operation that breaks it.
+An earlier version of this profile allowed grants up to weight 4, which broke (6).
 
-The costs: the offline path is gone; two to three times the co-signers; worse
-availability, since one trusted device still tolerates one co-signer outage but
-now depends on more of them; collusion more expensive rather than removed; and no
-switching in place. `k` cannot change by refresh (`frost-core` refuses it as a
-security fix), so moving between profiles is NKM §7.5a's Re-split.
+The costs: the offline path is gone; more co-signers (four or six against three);
+worse availability, since one trusted device still tolerates one co-signer outage but
+now depends on three of four; collusion that still needs only three co-signers once
+both grants are live, as set 14 does; and no switching in place. `k` cannot change
+by refresh (`frost-core` refuses it as a security fix), so moving between profiles is
+NKM §7.5a's Re-split.
+
+## Sessions
+
+**The default way to log an app in** (TIERS §5.0). The app holds no share. It sends
+each request to a trusted device over NIP-46; the device applies its own policy and
+signs with co-signers as it does for itself, so the co-signers apply trusted-tier
+policy to it. The device learns the app's key from the app's own screen and asks the
+user once. A session issues nothing, triggers no rotation, counts toward nothing in
+the constraints, survives rotations, and ends at once when the user ends it. Its cost
+is that a trusted device must be online for every request. A grant is the
+phone-free alternative, and a client presents it that way.
 
 ## Grants
 
-**Issue** (TIERS §5.1) is a rotation and carries rotation's full authority,
-including its delay (below). The epoch advances by a delta reshare with `k − 1`
-fresh coefficients, which is `frost-core`'s `keys::refresh`. The new index is
-issued by the repairable threshold scheme of Laing and Stinson, `frost-core`'s
-`keys::repairable`: a helper set of weight `k` that includes the initiator's `T`
-indices, and so at least one co-signer, sends blinded contributions that only the
-new device can sum. No party reaches `k` while it runs, and the initiator ends
-holding exactly `T`. Re-dealing from a reconstructed key is forbidden.
+**Issue** (TIERS §5.1) is a grant rotation: immediate, authorised by a trusted
+device and co-signer votes to weight `k`, and refused by every co-signer past the
+grant cap of (6). The epoch advances by a delta reshare with `k − 1` fresh
+coefficients, which is `frost-core`'s `keys::refresh`. The new index is issued by the
+repairable threshold scheme of Laing and Stinson, `frost-core`'s `keys::repairable`: a
+helper set of weight `k` that includes the initiator's `T` indices, and so at least
+one co-signer, sends blinded contributions that only the new device can sum. No party
+reaches `k` while it runs, and the initiator ends holding exactly `T`. Re-dealing from
+a reconstructed key is forbidden.
 
 **Delivery** is one QRST session with the `frost-share` profile. The typed code is
 required unless the pairing token reached the app over a channel the issuing device
@@ -191,9 +222,9 @@ one payload. The grant arrives unadmitted and cannot obtain a co-signature until
 trusted device admits it.
 
 **Interception is not recoverable.** Neither expiry nor rotation undoes a
-reconstruction: an intercepted grant, the other live grant and one co-signer total
-`k`. The bound is the grant budget and the co-signers' honesty, and a client does
-not present grant delivery as recoverable.
+reconstruction: an intercepted grant and all three co-signers total `k`. The bound is
+the grant cap and the co-signers' honesty, and a client does not present grant
+delivery as recoverable.
 
 **Expiry** is enforced twice. Every co-signer refuses the index from the moment it
 passes, and never extends it. The next rotation drops the index algebraically.
@@ -237,11 +268,17 @@ live entry for that index and carries no tweaks.
   its own. Under Profile A it does not stop two trusted devices, which sign with no
   co-signer, and the indicator says so. Under Profile B it stops everything, and
   the indicator says that instead.
-- **(e) Delay with veto.** A trusted-only kind requested with exactly one trusted
-  device in the signing set is held for NKM §7.10's recovery delay, and every other
-  trusted device is notified. Any can approve early or veto. With no other trusted
-  device the delay elapses on its own. Two trusted devices in the set are the
-  approval, and nothing is held.
+- **(e) Delay with veto, for destructive changes.** With exactly one trusted device
+  in the signing set, co-signers compare a profile, follow-list or relay-list event
+  with the last one they hold, and count deletions. Following someone, unfollowing a
+  few (at most 5 and 20%, counted over a day), adding a relay, changing name or
+  picture alone (with a notice), and up to 10 deletion events a day naming 5 events
+  each go through. Removing many follows at once, removing a relay, changing name and
+  picture together, and deleting more are held for NKM §7.10's recovery delay, with
+  every other trusted device notified; any can approve early or veto. Other
+  trusted-only kinds are always held. With no prior event to compare, a co-signer
+  looks on the user's relays and holds if it finds none. The same rules apply to a
+  session. Two trusted devices in the set are the approval, and nothing is held.
 
 **Decryption carries no event,** so it is gated by tier (TIERS §6.0.4). A trusted
 index is allowed. A grant is refused by default; its policy may list named peers,
@@ -257,40 +294,60 @@ the principal: TIERS.md needs policy changed on a trusted device's signature, an
 ## Rotation and revocation
 
 **Refusal** (TIERS §7.1). One trusted device instructs every co-signer to refuse a
-named index, immediately and with no vote. It removes no share, and does not touch
-a set that signs without a co-signer.
+named index, immediately and with no vote. It removes no share, does not touch a set
+that signs without a co-signer, cannot name the recovery share, and cannot silence
+another device's veto.
 
-**Rotation** (TIERS §7.2), to revoke, add a trusted device, issue a grant or drop
-expired ones, needs all three:
+**Grant rotations are immediate** (TIERS §7.2). Issuing, revoking or dropping
+expired grants needs a trusted device to initiate and votes totalling `k` — its `T`
+and the rest from co-signers, so one device never rotates alone — with every voting
+co-signer checking the grant cap. There is no delay: (6) already keeps a compromised
+device's grants short of `k`.
 
-1. initiation by a trusted device;
-2. votes totalling `k` on the new epoch record, `T` from the initiator and the
-   rest from co-signers, so one trusted device never rotates alone;
-3. NKM §7.10's delay, with notice to every trusted device and a veto for any of
-   them. A second trusted device's approval completes it at once.
+**Trusted-set rotations wait.** Admitting, reissuing or removing a trusted device, or
+creating or re-keying the recovery share, waits NKM §7.10's delay, with notice to
+every trusted device. Any other trusted device can veto, including the one being
+removed. Approval from every other trusted device completes it at once.
+
+**Authority levels** (TIERS §7.4). Co-signers hold the state of every pending
+trusted-set rotation and enforce its level:
+
+| Level | Authority | Vetoable by | Cancels |
+|---|---|---|---|
+| L0 | A grant | — no rotation authority at all | — |
+| L1 | A trusted device + co-signers | Any other trusted device | — |
+| L2 | The opened recovery share + every co-signer | Not by L1 | Pending L1 |
+| L3 | The recovery share + a trusted device + co-signers | Not by L1 or L2 | Pending L1 and L2 |
+
+A conflict at an equal level — a veto, or two different proposals — freezes all
+co-signing until one side withdraws, and never lifts on its own. Against an attacker
+holding one device, a user with another device ends in a freeze and a user with the
+recovery phrase wins. Against an attacker holding the phrase, only a user holding a
+device and the phrase wins. An attacker holding a device and the phrase wins against
+anyone holding less; against a user holding the same, co-signing freezes, but without
+(7) both sides can still sign without co-signers, so the honest outcome is migration
+to a new key, as after theft of an nsec with its backup.
 
 A rotation drops every grant, omits revoked indices, delivers `T` indices to a new
-trusted device over `T` QRST sessions, and has every member verify its new share
-before discarding its old one.
+trusted device over `T` QRST sessions, repairs the recovery share for the new epoch,
+and has every member verify its new share before discarding its old one (TIERS §7.5).
 
-**What this means** (TIERS §7.3). Rule 1 is something co-signers follow, not
-something the maths enforces. A weight-`k` set with no trusted device, such as
-sets 10 to 13, can drive a rotation and reissue a trusted share once the delay
-elapses. Only a veto stops it, and a veto needs a trusted device that is reachable
-or restorable. This is accepted, and accepted against loss: a design where nothing
-without a trusted device could ever rotate is one where losing every trusted
-device loses the identity. The screen that enrols co-signers says so and never
-describes them as unable to reach the key.
+**What this means** (TIERS §7.3). The levels are something co-signers follow, not
+something the maths enforces. Set 14 can sign any epoch record. Losing every trusted
+device is recoverable through the recovery share at L2 or a share backup, and that
+is accepted against loss: a design where nothing without a trusted device could ever
+rotate is one where losing every trusted device loses the identity. The screen that
+enrols co-signers says so and never describes them as unable to reach the key.
 
-**A restored trusted device is that trusted device** (TIERS §7.5). It can veto,
+**A restored trusted device is that trusted device** (TIERS §7.6). It can veto,
 approve, freeze and rotate, and co-signers accept it on its signature alone, with
-no liveness or registration check. So a rotation's window is also a recovery
+no liveness or registration check. So an L1 rotation's window is also a recovery
 window: restore from backup inside it and veto. Until the next rotation, the
 original and the restoration count as one party.
 
 ## Backup
 
-**Share backup** (TIERS §8). One trusted device's `T` indices for one epoch,
+**Share backup** (TIERS §8.1–§8.3). One trusted device's `T` indices for one epoch,
 encrypted under a passkey PRF or a generated paper secret of at least 96 bits,
 never a chosen password. Each container is gift-wrapped to a burner key derived
 from the factor, published to at least three relays, and verified from at least
@@ -300,14 +357,30 @@ finalises until the new backup is published and verified.
 **A stored share is not a co-signer.** It is never counted in `N` or `n_s` and
 never gets an index. A client refuses to store it on a relay run by a co-signer.
 Whoever opens it holds a trusted device's weight and authority: at the reference
-configuration, the factor plus one co-signer is the key.
+configuration, the factor plus two co-signers is the key.
+
+**The dormant recovery share** (TIERS §8.4). One index, held by nobody: every
+helper seals its contribution to a key derived from a recovery phrase or passkey, so
+no party ever holds it in plaintext. It is stored on relays or on a co-signer and
+repaired at every rotation. Sealed it changes nothing in the constraints; opened it
+weighs 1, signs nothing, and carries only L2 and L3 rotation authority after the
+delay, whichever factor opened it. With every co-signer it replaces the trusted set.
+Without (7), the phrase together with any one trusted device is the key, and the
+client says so.
+
+**A recovery artifact is required** (TIERS §8.5). A group does not activate until a
+share backup or the recovery share exists and is verified. Without one, a user with
+a single trusted device who loses it loses the identity permanently: no device
+exports a key, co-signers hold less than `k` and refuse to hold weight for a user who
+holds none, and grants cannot rotate. That is worse than a raw nsec.
 
 **Whole-key backup** (NKM §4.2). A blob store holds the nsec, sealed. A passkey
 factor releases it immediately. A passphrase factor waits a configurable delay,
 default a day, while every registered device is told a recovery started and can
 approve or cancel; with no device registered the delay elapses on its own. Where
 this backup exists it holds the whole key and outranks every inequality above, so a
-client lists it beside the share backup and never presents the two as equivalent.
+client lists it beside the share backup and never presents the two as equivalent. It
+does not satisfy the recovery-artifact requirement.
 
 ## Attestation (optional)
 
@@ -347,7 +420,8 @@ app storage. It upgrades in place. Logging into the device is the unlock; rare,
 consequential actions always ask, and that permission lasts for one transfer.
 
 **Backup offer** (NKM §4.1). Offered once at the end of setup and again at
-activation. Skippable, and if you skip it the app never nags.
+activation. Skippable, and if you skip it the app never nags. Activating the tiers is
+separate: it needs a recovery artifact first (TIERS §8.5).
 
 **Other arrangements.** NKM §7 defines two threshold arrangements at `t = 2`: a
 server co-signer (§7.1–§7.17) and a serverless device quorum (§7.18). A group uses
@@ -358,38 +432,46 @@ three assign indices by incompatible rules (TIERS §1).
 
 At the reference configuration (TIERS §10):
 
-- **A malicious web app** holds one weight-1 grant. It signs no destructive kind,
-  expires, and is dropped at the next rotation.
-- **A compromised trusted device** holds `T < k`, so it needs a co-signer or a
-  grant it does not control. It is delayed and vetoable on trusted-only kinds when
-  a co-signer is in the set, refused immediately by another trusted device, and
-  rotated out.
+- **A malicious web app** holds no share by default: a session signs only what the
+  trusted device approves, through co-signers. Given a grant instead, it holds one
+  weight-1 index, signs no trusted-only kind, expires, and is dropped at the next
+  rotation.
+- **A compromised trusted device** holds `T = k − 2`, so it needs two co-signers, or
+  one with a grant, and by (6) no grant it issues itself replaces them. Destructive
+  changes — mass deletion, a large unfollow, relay removal, profile replacement — are
+  held and vetoable when a co-signer is in the set. Another trusted device refuses it
+  at once, and it changes the trusted set only at L1.
 - **Compromised co-signers** neither sign nor rotate alone.
-- **A lost device** is weight `T` behind level-3 storage, inert until a second
-  party is taken.
+- **A lost device** is weight `T` behind level-3 storage, still two votes short of
+  `k`. Recovery always exists, because a recovery artifact is required at setup.
 - **A relay or anyone watching one,** and **a photographed or swapped QR,** learn
   nothing (QRST).
 
 It does not protect against these, and the specs say so rather than implying
 otherwise:
 
-- **Co-signers colluding with grants.** Sets 10 to 13 reach `k` and are the key.
-  The other arrangements have no such parties, so this is introduced by the tiers,
-  and the grant budget is the only bound.
+- **Co-signers colluding with the grant.** Set 14 reaches `k` and is the key. The
+  other arrangements have no such parties, so this is introduced by the tiers, and
+  the grant cap and co-signer independence are the only bounds.
+- **A trusted device and the recovery phrase together.** Without (7) they reach `k`
+  with a self-issued grant and no co-signer. Against a user holding the same, the
+  outcome is migration to a new key.
 - **A compromised trusted device inside the delay window** (TIERS §11.4). If no
   other trusted device reads the notice in time, the held mass deletion completes.
   With one trusted device it completes by construction, unless one is restored
-  from backup inside the window. This survives both profiles.
+  from backup inside the window. Deletions within the daily limit are not held at
+  all. This survives both profiles.
 - **Two compromised trusted devices, under Profile A.** They sign with no
   co-signer, so no rule runs. Profile B removes this case.
-- **A phished backup factor.** A fake backup screen yields a trusted device's
-  weight and authority. A generated phrase that is never typed anywhere else is the
-  whole defence.
+- **A phished backup factor or recovery phrase.** A fake backup screen yields a
+  trusted device's weight and authority, and the recovery phrase outranks every
+  device. A generated phrase that is never typed anywhere else is the whole defence.
 - **A website you hand your whole key to.** The code comparison proves you're
   talking to the device you think you are; it cannot tell you that device is
   honest. A site can behave correctly for everyone who reviews it and act only
   against one chosen person, so reputation is the wrong instrument. The only
-  structural answer is not giving a website a usable key, which is what a grant is.
+  structural answer is not giving a website a usable key, which is what a session
+  or a grant is.
 - **A compromised device you're already using.** Same as any wallet.
 - **Relay behaviour.** Some relays ignore deletions, so a real mass deletion is
   often partial. That is luck, not protection.
@@ -416,11 +498,12 @@ it as the user's doing.
 
 Per-app scoping in a remote signer cannot stop it: the scope and the whole key sit
 in one process, allowing kind 5 at all allows all of it, and a thousand prompts get
-approved. Here, kinds `0`, `3`, `5` and `10002` are trusted-only unconditionally,
+approved. Here, kinds `0`, `3`, `5` and `10002` are never co-signed for a grant,
 enforced by co-signers the app does not control, every one of which a lone grant
-needs. A deletion requested from a trusted device, with only one trusted device in
-the signing set, is held and vetoable. No partial signature exists during the
-hold, so a veto means no deletion happened.
+needs. From a trusted device or a session, co-signers compare each change with the
+last one: a mass deletion, a large unfollow, a relay removal or a replaced profile is
+held and vetoable, while ordinary follows and a few deletions a day go through. No
+partial signature exists during the hold, so a veto means no deletion happened.
 
 ## FROSTR, and what it does not yet expose
 

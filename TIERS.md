@@ -89,7 +89,8 @@ can reach without them.
 ### 2.2 Index hygiene
 
 - Each index MUST be held by exactly one peer. Two peers MUST NOT hold the same
-  index, and a party's several indices MUST be held as several peers.
+  index, and a party's several indices MUST be held as several peers. The one exception
+  is the recovery index of §8.4, which no peer holds while it is sealed.
 - An index MUST NOT be reissued. A retired index number MUST NOT be reused in any
   later epoch of the same group, so that a member list read at any epoch names the
   same holder it always named.
@@ -145,6 +146,11 @@ hold indices of two tiers.
 
 An application connected by a session (§5.0) holds no index and so has no tier. It
 appears nowhere in §4's accounting.
+
+One index is not a party's: the dormant recovery share of §8.4, recorded with tier
+`recovery`. It is held by nobody while sealed, weighs nothing any party can bring to a
+signing set until it is unsealed, and has no authority but §7.4's L2 and L3. §3.1 to
+§3.3 do not apply to it.
 
 ### 3.1 Trusted device — weight `T`
 
@@ -756,11 +762,11 @@ NKM §7.4 already defines, the additional fields needed to evaluate §4 and §6.
 structured object; this document adds fields to that object and changes nothing
 about how it is published.
 
-- Group-wide: `k`, `T`, `n_s`, the grant cap `W_cap` (§4.2), and the commitment vector of
-  §5.1 step 2.
+- Group-wide: `k`, `T`, `n_s`, the grant cap `W_cap` (§4.2), the commitment vector of
+  §5.1 step 2, and `recovery_pub` where a recovery share exists (§8.4).
 - Per member: `party` — a stable identifier shared by every index one party holds —
-  and `tier`, one of `trusted`, `cosigner`, `grant`; and for a grant, `expiry`,
-  `issuer` and `policy_id`.
+  and `tier`, one of `trusted`, `cosigner`, `grant`, `recovery`; and for a grant,
+  `expiry`, `issuer` and `policy_id`.
 
 Every quorum rule in this document is evaluated over `party` and `tier`, never over
 the raw member list (§2.3). A member list read without them counts a weight-`T`
@@ -1191,7 +1197,9 @@ held trusted device (§7.6).
 **The last cell is the intended outcome.** An attacker holding a trusted device and the
 recovery phrase holds everything the user holds; nothing the co-signers can observe
 tells the two apart, and the protocol refuses to pick. A frozen key is the result,
-stated to the user in those terms.
+stated to the user in those terms. It is the outcome for everything that routes through a
+co-signer, and not a bound on the key: that attacker can also issue itself grants and
+reach `k` with its device and the recovery share alone (§8.4).
 
 Two consequences a client MUST state where the recovery share is created. **The phrase
 outranks every device**: against a user who can no longer produce it, whoever can wins.
@@ -1203,7 +1211,8 @@ completes.
 set 14 can sign any epoch record without a trusted device, and set 1 under Profile A is
 two trusted devices that already reach `k`. Neither adds anything to the residual. Set
 14 is every co-signer abandoning §6, which §7.3 already prices, and an attacker holding
-both devices of set 1 is outside the table because it holds the key.
+both devices of set 1 is outside the table because it holds the key. The recovery share's
+own sets do add one, and §8.4 states it.
 
 ### 7.5 What a rotation does
 
@@ -1279,7 +1288,7 @@ device its own indices.
 
 ### 8.1 What is backed up
 
-A backup under this section holds **one trusted device's indices** — all `T` of them,
+A backup under §8.1 to §8.3 holds **one trusted device's indices** — all `T` of them,
 for one epoch. It restores a trusted device and nothing else. It does not hold the
 nsec, does not hold any co-signer's share, and does not hold any grant.
 
@@ -1356,6 +1365,117 @@ that it survives activation by design — it holds the whole key and outranks ev
 inequality in §4. That is NKM's decision and this document does not disturb it, but a
 client MUST list it on the same screen as this section's backup and MUST NOT present
 the two as equivalent.
+
+### 8.4 The dormant recovery share
+
+**One index of the group is held by nobody.** The recovery share `R` is a share at an
+index of its own, recorded in the epoch record with tier `recovery`, sealed under a
+recovery factor, and stored only as ciphertext. **It weighs 1, and only while unsealed.**
+Sealed, it is weight that no party can bring to a signing set.
+
+- **Factor.** Exactly §8.1's two: a passkey-PRF-derived key, or a generated paper phrase
+  of at least 96 bits; never a chosen password. From the factor the client derives a
+  **recovery keypair** by §8.2's burner derivation under its own label, and records its
+  public key `recovery_pub` in the epoch record. The factor MUST NOT be the factor of a
+  §8.1 backup: one secret that opens both is a trusted device and the recovery share
+  together, which is L3 authority (§7.4).
+- **Issue, without anyone holding it.** `R` is issued by §5.1 step 4's repairable
+  threshold scheme with the recovery keypair as target: every helper party gift-wraps its
+  `σ` to `recovery_pub`, as Appendix B.1 carries `σ` to a new device, and the initiating
+  trusted device adds one wrap carrying the epoch's group package and commitments. Only
+  the factor's holder can sum them. At activation, the dealer of NKM §7.5 MAY instead
+  seal `R` directly, because it holds the nsec at that moment anyway.
+- **Storage, on relays or on a co-signer.** On relays, the wraps are published and
+  verified exactly as §8.2 requires of a backup. On a co-signer, the co-signer holds them
+  and releases them only against a signature by the recovery keypair. §8.3 forbids a
+  trusted-share backup on a co-signer's relay; `R` is permitted there because the
+  concentration is bounded: that co-signer holds its own index and the ciphertext of one
+  more, and even unsealed the two weigh 2, short of `k ≥ 3`. A co-signer storing `R` MUST
+  NOT receive the factor or anything derived from it except `recovery_pub`.
+- **It goes stale at every rotation and is repaired at every rotation.** A delta moves
+  every index, and nobody can apply one to a sealed share. Every rotation MUST discard
+  `δ(R)` and re-issue `R` at the new epoch, by the same scheme, to the same
+  `recovery_pub`. That repair is not a change to the recovery share under §7.2 and adds no
+  delay, but a rotation MUST NOT be finalised until the new wraps are published and
+  verified. Only the latest epoch's wraps are ever needed.
+- **Its only use is rotation authority.** A co-signer MUST refuse every sign and ECDH
+  round from the recovery index except votes, approvals and withdrawals in an L2 or L3
+  rotation under §7.4. An unsealed `R` signs no event, decrypts nothing and issues no
+  grant, and what it does authorise completes only after NKM §7.10's delay, with notice to
+  every trusted device. The delay applies whichever factor unsealed it — unlike NKM §4.2,
+  a passkey does not skip it — because what it gates is authority over the trusted set,
+  and the window is what lets a user who holds a device and the phrase answer an L2 with
+  an L3.
+- **Recovery.** On a new device — a native app; a browser MUST NOT offer it, as NKM
+  §7.10 — the user presents the factor; the client derives the recovery keypair, fetches
+  the latest wraps, sums them into `R`, checks it against the commitments (NKM §3.3's P4
+  check), and proposes a rotation that admits itself as a trusted device (§7.5), removes
+  the trusted devices the user names, and reissues `R`, under a new factor where the old
+  one may be exposed. With no trusted device available that rotation is L2 and needs
+  every co-signer; with a surviving trusted device it is L3 and needs `k − T − 1`.
+
+**The recovery sets.** At §4.4's reference configuration, with `R` unsealed, the
+minimal signing sets containing it — labelled as §4.5 labels them, `R` counted as a
+grant — are:
+
+| Sets | Count | Label | What they are |
+|---|---|---|---|
+| `R + C1 + C2 + C3` | 1 | collusion | **L2.** Recovery with no trusted device; every co-signer must take part. |
+| `R +` a trusted device `+` a co-signer | 6 | mixed | **L3.** Recovery share and a surviving device. |
+| `R + G1 +` two co-signers | 3 | collusion | Weight `k` with no rotation authority: the grant is L0, and co-signers refuse the recovery index everything else. |
+| `R +` a trusted device `+ G1` | 2 | no-co-signer | Weight `k` with no co-signer. See below. |
+
+Under Profile B (`k = 5, W_cap = 2`) the shapes are the same — `R` with all four
+co-signers is L2, `R` with a device and two co-signers is L3 — and two more sets have no
+co-signer: `R` with a device and both grants, and **`R` with both trusted devices and no
+grant at all**, which breaks the property (5) exists to give while `R` is unsealed.
+
+**Sealed, `R` changes nothing in §4.** It contributes no weight any party can bring, so
+(1), (2), (3) and (6) hold exactly as they did: at the reference configuration
+`n_s = 3 < 4`, including for the co-signer that stores `R`, whose usable weight stays
+1; under Profile B `4 < 5`. `R` counts in `N` for §2.2, as an index number that is never
+reused, and nowhere else. Unsealed, `R` and every co-signer reach `k` by design: that is
+L2, and it exists only where `n_s = k − 1`.
+
+**What unsealing adds to the residual.** A trusted device, `R` and grants issued to the
+cap weigh `T + 1 + W_cap`, which is `k` at both reference profiles (`2 + 1 + 1 = 4`,
+`2 + 1 + 2 = 5`). Grant issue is immediate (§7.2), so **an attacker holding a trusted
+device and the phrase can issue itself grants and then sign or reconstruct with no
+co-signer**, past §6 and past §7.4's freeze. This is no more than §8.1's factor already
+gives: a device and a trusted-share backup are `2T`, which is `k` under Profile A, and
+`2T` plus one self-issued grant is `k` under Profile B. The recovery factor MUST therefore
+be presented as authority over the whole identity, not as "a backup", and a client MUST
+say that the phrase together with any one trusted device is the key. SPEC_ISSUES.md files
+the constraint that would close it.
+
+### 8.5 A recovery artifact is required at setup
+
+**A client MUST NOT complete activation of a group under this document until at least
+one recovery artifact exists and has been verified:** the dormant recovery share of §8.4,
+or a trusted-share backup of §8.1 and §8.2 for the activating device. After activation, a
+client MUST NOT let a rotation leave the group with neither, and §8.2 and §8.4 keep
+whichever exists current.
+
+**The reason: without one, a single-device user has no recovery, which is worse than a
+raw nsec.** A raw nsec is one secret its holder can copy at any moment — written down,
+exported as `ncryptsec` — and any copy recovers it. A key under this document cannot be
+copied from anywhere. The trusted device holds `T < k` and exports nothing that signs;
+the co-signers hold `n_s < k`, and §3.2 forbids them from holding weight for a user who
+holds none; grants have no rotation authority (§7.4's L0). So a user with one trusted
+device and no artifact who loses that device loses the identity permanently, and nobody —
+not the user, not the co-signers, not their operators — can bring it back.
+
+This does not contradict NKM §4.1, whose backup offer stays skippable, or NKM §7.5 step 1,
+which records a decline: those govern the nsec. This section governs whether a group may
+activate. A user who declines every artifact keeps the nsec in base mode. An NKM §4.2
+blob of the nsec, where one exists, also recovers the identity but does not satisfy this
+section: it holds the whole key outside every rule here (§8.3), and a client MUST NOT
+steer a user toward it as the way to meet this requirement.
+
+The two artifacts recover differently, and a client SHOULD say how. A §8.1 backup restores
+one trusted device's weight with no vote and no delay, and is L1 authority once restored.
+The recovery share restores nothing by itself; it carries L2 authority over the trusted
+set, after the delay and with every co-signer, and outranks every device (§7.4).
 
 ---
 
@@ -1461,7 +1581,7 @@ line are cited beside it.
 | Grant holder colluding with co-signers | No analogue. | No analogue: one party holds everything, so there is nobody to collude with. | With every co-signer, reaches `k` and is therefore the key (§4.5 set 14); the grant cap of constraints (2) and (6) is the only bound, and §7.3 refuses to hide it. |
 | Malicious signer app | Has the key the moment it is pasted in. | Holds the whole key by design; its scoping is its own code and it may ignore it. | Holds at most a grant, or `T` if the user made it a trusted device; the policy that binds it runs on parties it does not control (§6). |
 | Phishing of a consent screen | Yields the key; the screen is the only control and the attacker wrote it. | Yields a connection the user believes is scoped, where the scope is asserted by the page requesting it. | Yields at most a session or one grant at its allowlist — except a fake backup-factor screen, which yields a trusted device's weight (§8.3) and is the residual. |
-| Device loss | Is the key, behind whatever the device's storage offered; no revocation exists. | Is one revocable session, or the key if the lost device ran the signer. | Weight `T` at NKM §2.1 level 3, inert until a second party is taken; refusal is immediate (§7.1), and an L1 rotation removes it after the delay, which a lost device can veto only if someone has unlocked it — and then the recovery phrase decides (§7.4). |
+| Device loss | Is the key to whoever gets past the device's storage, and nothing can revoke it; recovery exists only if the user made a copy. | Is one revocable session, or the key if the lost device ran the signer; recovery is that signer's own backup, if it has one. | Weight `T` at NKM §2.1 level 3, `k − T` short of `k`, so a finder who unlocks it still needs co-signers applying §6 (§4.3); another trusted device refuses it immediately (§7.1). Recovery always exists, because §8.5 requires an artifact at setup: restore the device from §8.1 and rotate it out at L1, or with the recovery phrase and every co-signer at L2, which a finder holding the device cannot veto (§7.4). |
 
 **The two rows that are not improvements.** "Grant holder colluding with co-signers"
 has no analogue in the other two columns because they have no such parties, so the

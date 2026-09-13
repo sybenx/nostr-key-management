@@ -796,6 +796,42 @@ check MUST cover whatever the contributions assemble into." Without one of these
 profile needing more than one contributor has to fit every contribution inside the
 payload and inherits P1's ceiling as a cap on its threshold.
 
+### A trusted device and the recovery phrase reach `k` without a co-signer
+
+**Document:** TIERS.md
+**Section:** §8.4 (and §4.2, §7.2, §7.4)
+**Kind:** suspected error
+
+§7.4 makes a conflict between two equal-level authorities freeze all co-signing, and
+states the last cell of its case table — an attacker holding a trusted device and the
+recovery phrase, against a user holding the same — as the intended outcome: a frozen
+key. That outcome holds for everything that routes through a co-signer. It does not
+bound the key.
+
+Constraint (6) bounds what a trusted device reaches with grants: `T + W_cap < k`. It does
+not count the recovery share, which weighs 1 once unsealed. A device, `R` and grants to
+the cap weigh `T + 1 + W_cap`, and at both reference profiles that is exactly `k`:
+`2 + 1 + 1 = 4` under Profile A, `2 + 1 + 2 = 5` under Profile B. Grant issue is immediate
+(§7.2), so the attacker issues itself grants before revealing anything, and the set
+`D + R + G` then signs and reconstructs with no co-signer in it (`tiers_check.py`, with `R`
+modelled as a weight-1 grant, lists `D1 + G1 + R` and `D2 + G1 + R` as no-co-signer sets at
+the reference configuration). Under Profile B, `D1 + D2 + R` does the same with no grant.
+
+TIERS.md §8.4 states this and argues it is no worse than §8.1's trusted-share factor, which
+with a device is `2T` — the key under Profile A, and the key with one self-issued grant
+under Profile B. That comparison is correct. It means the phrase is key-equivalent in the
+hands of anyone who also holds a device, and §7.4's freeze is weaker protection than the
+case table alone suggests.
+
+**Proposed fix:** add to §4.2, as a requirement wherever a recovery share exists: "(7)
+`T + 1 + W_cap < k` — a trusted device, the unsealed recovery share and every grant it
+could issue never sign without a co-signer." It costs one unit of grant cap: Profile A
+would need `W_cap = 0` at `k = 4`, or `k = 5, T = 2, n_s = 4, W_cap = 1`; Profile B would
+need `W_cap = 1` at `k = 5`. With (7) holding, §7.4's last cell becomes a real bound, and
+§8.4's residual paragraph reduces to the §8.1 comparison. If the cap is judged worth more
+than that, §7.4 should instead say in the table itself that its device-and-phrase row is
+a policy outcome only.
+
 ## Resolved
 
 ### A failed probe can leave a browser Holder with no transport at all

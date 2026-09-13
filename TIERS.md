@@ -357,3 +357,119 @@ can say. What sets 10 to 13 cost an attacker is the honest measure of the design
   than picking silently.
 
 ---
+
+## 5. Grants
+
+### 5.1 Issue
+
+A grant is issued by a trusted device, as a reshare to the next epoch whose new
+member list adds one index.
+
+1. **Authority.** A trusted device initiates. The operation is a rotation in the
+   sense of §7 and MUST satisfy §7's authority in full: the new epoch record is
+   signed by the group, so a trusted device alone cannot issue a grant any more than
+   it can sign alone.
+2. **New polynomial.** The epoch advances by the delta-polynomial reshare of NKM
+   §7.9: `f'(x) = f(x) + δ(x)` with `δ(0) = 0` and fresh randomness, every existing
+   member applying its own `δ` at each index it holds. NKM §7.9 gives `δ(x) = r·x`,
+   which is degree 1 because NKM fixes `t = 2`. **At `k ≥ 3` the delta MUST be
+   `δ(x) = Σ_{j=1}^{k−1} r_j·x^j` with every `r_j` fresh**, and the epoch record MUST
+   carry one commitment per coefficient; SPEC_ISSUES.md records the same requirement
+   against NKM §7.18's `t = 3` option and proposes the same form.
+3. **The grant's share is `f'(x_g)`** at a fresh index `x_g` that has never been used
+   in this group (§2.2).
+4. **No party may reach `k` during the issue.** The grant's share is an evaluation of
+   `f'` at a new point, which requires contributions weighted by `k` indices, and
+   those contributions MUST be blinded. **A party MUST NOT receive another party's
+   Lagrange-weighted contribution in any form from which that party's share can be
+   recovered.** A raw `λ_i(x_g)·s_i` is such a form: `λ_i(x_g)` is publicly
+   computable, so the contribution *is* the share. In particular the issuing trusted
+   device, which holds `T = k − 1` or more, MUST NOT act as the point where
+   contributions are summed in the clear; a co-signer's contribution is exactly the
+   unit it is missing. NKM §7.18's "combine them on one of the two" is sound in its
+   own setting, where the two combining devices already reconstruct by assumption and
+   are both the user's own hardware. It MUST NOT be carried into this document.
+5. **The group MUST NOT be re-dealt from a reconstruction to add a grant.**
+   Reconstructing the nsec on one device and splitting it again produces a correct
+   result and is the only thing FROSTR implementations offer today, and it is
+   forbidden here: NKM §7.5a reserves reconstruction to disable and Re-split, and a
+   grant issue is neither. SPEC_ISSUES.md records that no FROSTR implementation
+   provides a reshare primitive that satisfies 2 to 4.
+6. **Delivery.** One QRST session, one payload, one Sender — the issuing trusted
+   device — using the `frost-share` profile of NKM §3.3 in its unique-index form,
+   with `index = x_g`. The Receiver performs the profile's P4 check against the new
+   epoch's commitments, renders P5, and confirms (QRST §9.4). The SAS of QRST §6 and
+   §9.2 is REQUIRED unless the pairing token reached the receiving app over a channel
+   the issuing device controls, in which case the light flow of QRST §12.3 MAY be
+   used; QRST §12.3 states that condition and this document does not relax it.
+7. **The grant is `admitted: false` on arrival** and cannot obtain a co-signature
+   until admitted from a trusted device (NKM §7.1). Admission gates signing, not
+   reconstruction.
+
+**What interception of a grant share costs.** An intercepted grant index is one unit
+of weight. By (2) it cannot sign alone, and by §6 no honest co-signer will co-sign
+for an unadmitted index. But neither expiry nor rotation undoes a reconstruction:
+in the reference configuration an intercepted grant, the other live grant, and one
+co-signer total `k` (sets 12 and 13 of §4.5). The bound on interception is therefore
+the live-grant budget and the co-signers' honesty, not revocation, and a client MUST
+NOT present grant delivery as recoverable if it goes wrong.
+
+### 5.2 Expiry
+
+- **Every grant carries an expiry, set at issue by the issuing trusted device**, as
+  an absolute Unix time recorded in the epoch record and in every co-signer's grant
+  record. A client MUST show the expiry on the issue screen and MUST NOT offer an
+  unbounded option.
+- **Expiry is enforced in two places, and only one of them is algebraic.**
+  - A co-signer MUST refuse every sign and ECDH round for a grant index whose expiry
+    has passed, from the moment it passes, and MUST NOT extend, renew, or round up an
+    expiry on the grant's request. This is a policy refusal in the sense of NKM
+    §7.9's tier 1: it is immediate, requires contacting nobody, and touches no share.
+  - The next rotation MUST omit the index from the new member list, whether or not
+    the expiry has passed (§3.3). This is the algebraic one: after it, the retained
+    share is on a dead polynomial.
+- **Between expiry and the next rotation, the expired index still holds a live
+  share.** It cannot obtain a co-signature, but its weight still counts toward any
+  set that reconstructs. A client MUST count an expired-but-not-yet-rotated index
+  against `W_g` until the rotation that drops it completes, and SHOULD rotate on
+  expiry rather than wait.
+- Extending a grant is issuing a new one: a new index, a new expiry, a new §5.1
+  reshare. An expiry MUST NOT be edited in place.
+
+### 5.3 Records
+
+**The grant record, kept by every co-signer.** A co-signer MUST hold, for each grant
+index in the current epoch, exactly:
+
+| Field | Meaning |
+|---|---|
+| `index` | The grant's share index `x_g` |
+| `issuer` | The trusted device that issued it, by the `E.pub` of NKM §7.1 |
+| `expiry` | Absolute Unix time, as set at issue |
+| `policy_id` | The identifier of the policy (§6) this grant is bound to |
+
+The record is scoped to one epoch. A co-signer MUST discard every grant record on
+entering a new epoch and MUST NOT carry one forward, which is the enforcement of
+§3.3's "dropped at the next rotation regardless": a co-signer that has no record for
+an index has no policy for it and MUST refuse it. A co-signer MUST refuse to
+co-sign for any grant index for which it holds no record, and MUST NOT accept a
+grant record from the grant itself or from any party other than a trusted device
+under §7's authority.
+
+**The epoch record.** A group using this document carries, inside the epoch record
+NKM §7.4 already defines, the additional fields needed to evaluate §4 and §6. NKM
+§7.4 fixes the record's kind, encryption, signing and the fact that its content is a
+structured object; this document adds fields to that object and changes nothing
+about how it is published.
+
+- Group-wide: `k`, `T`, `n_s`, the live-grant budget, and the commitment vector of
+  §5.1 step 2.
+- Per member: `party` — a stable identifier shared by every index one party holds —
+  and `tier`, one of `trusted`, `cosigner`, `grant`; and for a grant, `expiry`,
+  `issuer` and `policy_id`.
+
+Every quorum rule in this document is evaluated over `party` and `tier`, never over
+the raw member list (§2.3). A member list read without them counts a weight-`T`
+trusted device as `T` independent signers.
+
+---

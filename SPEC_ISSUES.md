@@ -557,6 +557,69 @@ list). An implementer who counts peers rather than parties will miscount every r
 in §4 and §6, so the rule is stated where it can be tested rather than left to
 inference.
 
+### No FROSTR implementation has a reshare primitive, and the one on offer reconstructs
+
+**Document:** NOSTR_KEY_MANAGEMENT.md
+**Section:** §7.9 (and §7.5a, §7.18, TIERS.md §5.1)
+**Kind:** suspected error
+
+NKM §7.9 specifies rotation as a delta-polynomial reshare — `δ(x) = r·x`, `δ(0) = 0`,
+each member adding its own delta — and §7.5a states flatly that "rotation, share
+issuance, share-1 replication, changing a backup factor and server enrollment never"
+reconstruct. TIERS.md §5.1 builds grant issue on the same primitive, extended to
+evaluate the new polynomial at a new index. **Neither FROSTR implementation provides
+it, and the nearest thing that exists does the one thing §7.5a forbids.**
+
+- `bifrost` has a trusted dealer (`src/lib/package.ts`, `generate_dealer_package` →
+  `create_dealer_set`) and full reconstruction (`src/lib/util.ts:104`, via
+  `recover_secret_key`). There is no delta, no resharing, and no way to add an index
+  to a live group. `/onboard/req` and `/onboard/res` are not it: the response carries
+  the existing `GroupPackage` and a nonce package (`src/api/onboard.ts`,
+  `build_onboard_response`), so onboarding serves a node that already holds a share
+  from an earlier dealing.
+- `igloo-core` exposes exactly the same two operations and nothing between them:
+  `generateKeysetWithSecret` and `recoverSecretKeyFromCredentials`
+  (`src/keyset.ts:50`, `:158`, `:188`).
+- `bifrost-rs` does have an operation called rotation, and it reconstructs.
+  `rotate_keyset_dealer` (`crates/frostr-utils/src/keyset.rs:48`–`95`) calls
+  `recover_key`, deserializes the recovered signing key, and calls
+  `frost::keys::split` again. It preserves the group public key and can change
+  threshold and count — so it *can* add an index — but it assembles the nsec on one
+  machine to do it. Its own test asserts only that the group pubkey survives
+  (`:215`–`230`).
+
+So a client implementing NKM §7.9 or TIERS.md §5.1 against today's libraries has two
+choices, and both contradict something: call `rotate_keyset_dealer` and reconstruct,
+against §7.5a; or write the delta reshare itself, against the project's own
+preference for citing rather than owning constructions. The second is the intended
+one and NKM should say so rather than leaving the reader to discover that the
+obvious library call is the forbidden operation.
+
+A second gap sits inside the first. Adding an index needs `f'` evaluated at a new
+point, which needs `k` Lagrange-weighted contributions, and `λ_i(x_g)` is publicly
+computable — so a raw contribution `λ_i(x_g)·s_i` *is* `s_i`. NKM §7.18 says the two
+contributing devices "combine them on one of the two — permissible because those two
+already reconstruct in this trust model", which is true at `t = 2` among the user's
+own hardware and false the moment the contributors are not all equally trusted. In a
+weighted group a trusted device holds `T = k − 1` and a co-signer's contribution is
+precisely the missing unit, so the naive combination hands one device the key.
+TIERS.md §5.1 step 4 forbids it and states the property that must hold; it does not
+specify the blinded construction, because there is no obvious one that also keeps a
+single QRST Sender (a designated combiner who is a contributor can strip any
+zero-sharing it participates in, and combining at the recipient makes the recipient
+the point where `k` contributions meet).
+
+**Proposed fix:** NKM §7.9 should add, after step 4: "No FROSTR implementation
+currently offers this reshare. `bifrost` and `igloo-core` provide trusted dealing and
+reconstruction only; `bifrost-rs`'s `rotate_keyset_dealer` reconstructs the nsec
+before re-splitting and MUST NOT be used to perform a §7.9 rotation, which §7.5a
+declares non-reconstructing." NKM §7.18's "Adding a device" should add: "Combining
+the two contributions on one device is permissible here only because both are the
+user's own trusted hardware and any two of them already reconstruct. Where members
+are not equally trusted, a raw Lagrange-weighted contribution reveals the
+contributor's share and the combination MUST be blinded." A worked blinded
+construction is left open and is the thing this entry most wants written.
+
 ## Resolved
 
 ### A failed probe can leave a browser Holder with no transport at all

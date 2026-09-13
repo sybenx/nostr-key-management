@@ -16,7 +16,8 @@ is required. Trusted devices weigh `T` and co-signers 1 (§3.1, §3.2); a grant 
 what it says.
 
 Constraints (1), (2), (3) and (6) are required (§4.2); (4) is optional and on by
-default (§3.5); (5) is §4.6's condition that every signing set contains a co-signer.
+default (§3.5); (5) is §4.6's condition that every signing set contains a co-signer;
+(7) is optional and off by default, and counts the §8.4 recovery share against (6).
 The script also checks the MUSTs the inequalities assume: k >= 3 and N <= 255 (§2.2),
 T > 1 (§3.1), T < k and every grant's weight below T (§4.3), at least one trusted
 device (§3.2), and live grant weight within W_cap (§4.2).
@@ -36,7 +37,7 @@ Every minimal authorised set is listed with one label, tested in this order:
 so (5) holds exactly when no set is labelled no-co-signer.
 
 Exit 0 when every required constraint holds, 1 when one fails, 2 on unreadable input.
-(4) and (5) never change the exit status.
+(4), (5) and (7) never change the exit status.
 """
 import json, sys
 
@@ -128,6 +129,8 @@ def check(k, T, s, W_cap, parties):
         ("optional", "4", "§4.2", "2T >= k", f"2*{T} = {2 * T} >= {k}", 2 * T >= k),
         ("optional", "5", "§4.6", "D*T + W_g < k",
          f"{D}*{T} + {W_g} = {D * T + W_g} < {k}", D * T + W_g < k),
+        ("optional", "7", "§4.2", "T + 1 + W_cap < k",
+         f"{T} + 1 + {W_cap} = {T + 1 + W_cap} < {k}", T + 1 + W_cap < k),
     ]
 
     sets = []

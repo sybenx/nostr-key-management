@@ -61,7 +61,8 @@
         },
         "optional": {
           "4": false,
-          "5": true
+          "5": true,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
@@ -117,7 +118,8 @@
         },
         "optional": {
           "4": false,
-          "5": true
+          "5": true,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
@@ -179,7 +181,8 @@
         },
         "optional": {
           "4": false,
-          "5": true
+          "5": true,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
@@ -234,7 +237,8 @@
         },
         "optional": {
           "4": false,
-          "5": true
+          "5": true,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
@@ -291,7 +295,8 @@
         },
         "optional": {
           "4": false,
-          "5": false
+          "5": false,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
@@ -354,7 +359,8 @@
         },
         "optional": {
           "4": false,
-          "5": false
+          "5": false,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
@@ -410,7 +416,8 @@
         },
         "optional": {
           "4": false,
-          "5": false
+          "5": false,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
@@ -468,7 +475,8 @@
         },
         "optional": {
           "4": false,
-          "5": false
+          "5": false,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
@@ -532,7 +540,8 @@
         },
         "optional": {
           "4": false,
-          "5": false
+          "5": false,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
@@ -597,7 +606,8 @@
         },
         "optional": {
           "4": false,
-          "5": true
+          "5": true,
+          "7": true
         },
         "slack": {
           "trusted_device": 1,
@@ -663,7 +673,8 @@
         },
         "optional": {
           "4": false,
-          "5": true
+          "5": true,
+          "7": true
         },
         "slack": {
           "trusted_device": 1,
@@ -730,7 +741,8 @@
         },
         "optional": {
           "4": false,
-          "5": false
+          "5": false,
+          "7": true
         },
         "slack": {
           "trusted_device": 1,

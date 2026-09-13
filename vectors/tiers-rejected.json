@@ -2,7 +2,7 @@
   "spec": "TIERS.md",
   "version": "1.0-draft",
   "section": "2.2, 3.1, 3.2, 4.2, 4.3, 4.6, Appendix C",
-  "description": "One membership per constraint, each chosen so that the named constraint fails. For (1), (3) and (6) every other required constraint and precondition holds, so the nonzero exit is attributable to the one named. (2) cannot fail alone: (6) and W_g <= W_cap together imply it, so its case also fails (6). (4) and (5) are optional: their cases exit 0 and report the failure, which is how a client learns a membership is not Profile A, or not policy-complete under Profile B. The preconditions are the MUSTs the inequalities assume; k >= 3 cannot fail alone, because k = 2 leaves no T with 1 < T < k, and T < k fails together with (6), which implies it.",
+  "description": "One membership per constraint, each chosen so that the named constraint fails. For (1), (3) and (6) every other required constraint and precondition holds, so the nonzero exit is attributable to the one named. (2) cannot fail alone: (6) and W_g <= W_cap together imply it, so its case also fails (6). (4), (5) and (7) are optional: their cases exit 0 and report the failure, which is how a client learns a membership is not Profile A, not policy-complete under Profile B, or open to a device and the recovery phrase. The preconditions are the MUSTs the inequalities assume; k >= 3 cannot fail alone, because k = 2 leaves no T with 1 < T < k, and T < k fails together with (6), which implies it.",
   "cases": [
     {
       "name": "(1) n_s < k: four co-signers at k = 4 sign alone",
@@ -45,7 +45,8 @@
         },
         "optional": {
           "4": true,
-          "5": true
+          "5": true,
+          "7": false
         },
         "slack": {
           "trusted_device": 2,
@@ -110,7 +111,8 @@
         },
         "optional": {
           "4": true,
-          "5": false
+          "5": false,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
@@ -168,7 +170,8 @@
         },
         "optional": {
           "4": true,
-          "5": false
+          "5": false,
+          "7": false
         },
         "slack": {
           "trusted_device": 0,
@@ -220,7 +223,8 @@
         },
         "optional": {
           "4": false,
-          "5": true
+          "5": true,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
@@ -271,11 +275,69 @@
         },
         "optional": {
           "4": false,
-          "5": false
+          "5": false,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
           "grants": {}
+        }
+      }
+    },
+    {
+      "name": "(7) T + 1 + W_cap < k: §4.4's reference, where (7) is off and a device, the recovery share and the grant reach k",
+      "violates": {
+        "group": "optional",
+        "constraint": "7"
+      },
+      "membership": {
+        "k": 4,
+        "T": 2,
+        "s": 1,
+        "W_cap": 1,
+        "trusted_devices": [
+          "D1",
+          "D2"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true,
+          "W_g<=W_cap": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true,
+          "6": true
+        },
+        "optional": {
+          "4": true,
+          "5": false,
+          "7": false
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0
+          }
         }
       }
     },
@@ -328,7 +390,8 @@
         },
         "optional": {
           "4": true,
-          "5": false
+          "5": false,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
@@ -377,7 +440,8 @@
         },
         "optional": {
           "4": true,
-          "5": false
+          "5": false,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
@@ -555,7 +619,8 @@
         },
         "optional": {
           "4": true,
-          "5": false
+          "5": false,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
@@ -604,7 +669,8 @@
         },
         "optional": {
           "4": false,
-          "5": true
+          "5": true,
+          "7": true
         },
         "slack": {
           "trusted_device": 0,
@@ -651,7 +717,8 @@
         },
         "optional": {
           "4": true,
-          "5": false
+          "5": false,
+          "7": false
         },
         "slack": {
           "trusted_device": 2,
@@ -705,7 +772,8 @@
         },
         "optional": {
           "4": false,
-          "5": true
+          "5": true,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
@@ -758,7 +826,8 @@
         },
         "optional": {
           "4": true,
-          "5": true
+          "5": true,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
@@ -817,7 +886,8 @@
         },
         "optional": {
           "4": true,
-          "5": false
+          "5": false,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,

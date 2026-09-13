@@ -44,6 +44,9 @@ class Vectors(unittest.TestCase):
         self.assertEqual(got["optional"]["5"], all("cosigner" in k for k in kinds))
         self.assertEqual(not got["required"]["1"], {"cosigner"} in kinds)
         self.assertEqual(not got["required"]["2"], {"grant"} in kinds)
+        # (7) implies (6).
+        if got["optional"]["7"]:
+            self.assertTrue(got["required"]["6"])
         # (6) with the cap respected: one trusted device and grants never reach k.
         if got["required"]["6"] and got["preconditions"]["W_g<=W_cap"]:
             for s in got["sets"]:
@@ -119,6 +122,13 @@ class Boundaries(unittest.TestCase):
         code, r = run(dict(base, W_cap=2, grants=[{"party": "G1", "weight": 1}, {"party": "G2", "weight": 1}]))
         self.assertEqual((code, r["required"]["6"]), (1, False))
         self.assertIn({"parties": ["D1", "G1", "G2"], "weight": 4, "label": "no-co-signer"}, r["sets"])
+
+    def test_7_is_optional_and_one_short_of_6(self):
+        base = {"k": 4, "T": 2, "s": 1, "trusted_devices": ["D1"], "co_signers": ["C1", "C2", "C3"]}
+        code, r = run(dict(base, W_cap=1, grants=[{"party": "G1", "weight": 1}]))
+        self.assertEqual((code, r["required"]["6"], r["optional"]["7"]), (0, True, False))
+        code, r = run(dict(base, W_cap=0, grants=[]))
+        self.assertEqual((code, r["optional"]["7"]), (0, True))
 
     def test_unreadable_input_exits_2(self):
         for bad in ({"k": "3", "T": 2, "W_cap": 0}, {"k": 3, "T": 2, "W_cap": 0, "grants": [{"party": "G1"}]},

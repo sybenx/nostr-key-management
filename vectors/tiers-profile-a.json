@@ -2,7 +2,7 @@
   "spec": "TIERS.md",
   "version": "1.0-draft",
   "section": "4.4, 4.5",
-  "description": "Profile A's reference configuration (§4.4: k = 4, T = 2, three co-signers, W_cap = 1, s = 1) as a membership with two trusted devices and its one live grant, with every minimal authorised signing set of §4.5 in the table's own order. The constraint results and slacks follow from §4.2 and §4.6 by hand; the sets are transcribed from §4.5, with each row's number, label and description kept so a reader can check them against the table.",
+  "description": "Profile A's reference configuration (§4.4: k = 4, T = 2, three co-signers, W_cap = 1, s = 1) as a membership with two trusted devices and its one live grant, with every minimal authorised signing set of §4.5 in the table's own order. The second case is §4.2's Profile A configuration with the optional (7) on, checked by set counts from binomial coefficients. The constraint results and slacks follow from §4.2 and §4.6 by hand; the sets are transcribed from §4.5, with each row's number, label and description kept so a reader can check them against the table.",
   "labels": {
     "no-co-signer": "No co-signer in the set: §6 policy never runs.",
     "collusion": "A co-signer and no trusted device.",
@@ -52,7 +52,8 @@
         },
         "optional": {
           "4": true,
-          "5": false
+          "5": false,
+          "7": false
         },
         "slack": {
           "trusted_device": 1,
@@ -216,6 +217,67 @@
             "what_it_is": "The grant with every co-signer and no trusted device. How the grant signs phone-free under honest co-signers; collusion if all three abandon §6."
           }
         ]
+      }
+    },
+    {
+      "name": "§4.2, (7) on in Profile A with one grant: k = 6, T = 3, five co-signers, s = 2",
+      "membership": {
+        "k": 6,
+        "T": 3,
+        "s": 2,
+        "W_cap": 1,
+        "trusted_devices": [
+          "D1",
+          "D2"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4",
+          "C5"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true,
+          "W_g<=W_cap": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true,
+          "6": true
+        },
+        "optional": {
+          "4": true,
+          "5": false,
+          "7": true
+        },
+        "slack": {
+          "trusted_device": 2,
+          "grants": {
+            "G1": 0
+          }
+        },
+        "set_counts": {
+          "trusted": 20,
+          "mixed": 20,
+          "collusion": 1,
+          "no-co-signer": 1
+        }
       }
     }
   ]

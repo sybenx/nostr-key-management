@@ -237,6 +237,7 @@ enforces §6. Both are defensible; neither is right for everyone.
 | Two of the user's own devices, nothing else reachable | Sign | Cannot sign |
 | Signatures no co-signer sees | Possible | None, where §4.6's condition holds |
 | §11.4's two-device residual | Present | Removed |
+| Constraint (7), where a recovery share exists | Off; on only with no grant at `T = 2` | Off at the reference cap; on at `W_cap = 1` |
 
 The choice MUST be presented at activation, MUST default to A, and MUST state the
 trade in the terms above rather than as a security level.
@@ -271,7 +272,8 @@ reconstructs — and a client MUST present it as such rather than as a setting.
 
 A configuration MUST satisfy (1), (2), (3) and (6). (4) is **OPTIONAL and on by
 default**; §3.5 gives the choice and §4.6 the configuration that declines it. (5) is
-Profile B's, and §4.6 states it.
+Profile B's, and §4.6 states it. (7) is **OPTIONAL and off by default**, meaningful only
+where a recovery share exists (§8.4), and stated below.
 
 ```
 (1)  n_s < k                    co-signers alone never sign
@@ -280,6 +282,8 @@ Profile B's, and §4.6 states it.
 (4)  2T ≥ k                     two trusted devices recover with no co-signers   [optional]
 (6)  T + W_cap < k              for every trusted device: it and every grant it
                                 could issue never sign without a co-signer
+(7)  T + 1 + W_cap < k          a trusted device, the unsealed recovery share and    [optional]
+                                every grant it could issue never sign without a co-signer
 ```
 
 (1) is what makes a co-signer a co-signer rather than a custodian, and it does
@@ -320,6 +324,31 @@ co-signer. Two consequences follow directly:
 (6) is stated over one trusted device because it is the attack of one compromised
 device. Two compromised trusted devices under Profile A already reach `k` by (4), and
 §4.6 is the profile that answers that case.
+
+**(7) is (6) with the recovery share counted.** The recovery share of §8.4 weighs 1 once
+unsealed, and (6) does not count it, so a trusted device, the share and grants issued to
+the cap weigh `T + 1 + W_cap` — exactly `k` at both reference configurations. (7)
+implies (6).
+
+- **What it buys.** An attacker holding a trusted device and the recovery phrase cannot
+  reach `k` without a co-signer. §7.4's L3 tie — both sides holding a device and the
+  phrase — is then a real freeze: neither side can sign anything, rotate anything or
+  reconstruct without a co-signer, and the co-signers have frozen. Without (7), that tie
+  freezes only co-signer-assisted sets, and the honest outcome is migration to a new key.
+- **Its cost under Profile A.** (4) and (7) together need `T + 1 + W_cap < k ≤ 2T`, so
+  `W_cap ≤ T − 2`. At `T = 2` that is no grant at all: §4.4's reference with (7) on is
+  `W_cap = 0`, sessions only (§5.0), with no phone-free mode. Keeping one grant needs
+  `T = 3`: `k = 6, T = 3, n_s = 5, W_cap = 1`, which satisfies (1), (3) at `s = 2`, (4),
+  (6) and (7), and has L2 because `n_s = k − 1` — at the price of three indices per
+  trusted device and five co-signers. **(7) is off in Profile A.**
+- **Its cost under Profile B.** At `k = 5, T = 2`, (7) needs `W_cap ≤ 1`: one live grant
+  instead of two, and nothing else changes. §4.6's reference keeps `W_cap = 2` with (7)
+  off; a Profile B user who wants (7) sets the cap to 1. (7) does not remove the set of
+  two trusted devices and the recovery share, which needs both devices and is §4.6's
+  concern rather than this one (§8.4).
+
+A client MUST present (7) where the recovery share is created, in the terms above, and
+MUST refuse a grant issue that would break it where the user turned it on.
 
 **The previous reference configuration violates (6).** At `k = 3, T = 2` with a
 live-grant budget of 2, `T + W_cap = 4 ≥ 3`; even a budget of 1 gives `3 ≥ 3`. A single
@@ -1193,14 +1222,16 @@ held trusted device (§7.6).
 |---|---|---|---|
 | **A trusted device** | **Freeze.** Either side's L1 proposal meets the other's veto, and neither signs through a co-signer until one withdraws. The user's way out is the phrase. | **User wins.** An L2 rotation removes the attacker's device and admits the user's; the device cannot veto it, and its own pending L1 is cancelled. | **User wins** at L2, or L3. The attacker has nothing above L1. |
 | **The phrase** | **Attacker wins.** Its L2 rotation cannot be vetoed by the user's device and cancels any pending L1, including a reissue of the recovery share under a new phrase that had not yet completed. | **Freeze.** Two L2 proposals under one credential; a withdrawal by either withdraws both. | **User wins.** An L3 rotation cancels the attacker's L2. |
-| **A trusted device and the phrase** | **Attacker wins,** at L2 or L3. | **Attacker wins.** Its L3 cancels the user's L2. | **Freeze.** Two L3 proposals, each withdrawable only by its own device. |
+| **A trusted device and the phrase** | **Attacker wins, and holds the key.** Without (7) it signs with its device, the recovery share and a grant it issues itself, no co-signer needed (§8.4); with (7) it wins at L2 or L3 and then admits devices of its own. The user migrates to a new key. | **Attacker wins, as in the previous cell.** Its L3 cancels the user's L2. | **Both sides can sign without co-signers; the freeze covers only co-signer-assisted sets.** Two L3 proposals, each withdrawable only by its own device, freeze all co-signing — but without (7) each side reaches `k` with its device, the recovery share and a grant issued before the freeze, and shares of an earlier epoch still sign for the same key. **The honest outcome is migration to a new key**, as after theft of an nsec together with its backup. With (7) on, neither side reaches `k` without a co-signer, and the freeze is real. |
 
-**The last cell is the intended outcome.** An attacker holding a trusted device and the
-recovery phrase holds everything the user holds; nothing the co-signers can observe
-tells the two apart, and the protocol refuses to pick. A frozen key is the result,
-stated to the user in those terms. It is the outcome for everything that routes through a
-co-signer, and not a bound on the key: that attacker can also issue itself grants and
-reach `k` with its device and the recovery share alone (§8.4).
+**The last row is where the protocol stops being able to help.** An attacker holding a
+trusted device and the recovery phrase holds everything the user holds; nothing the
+co-signers can observe tells the two apart, and the protocol refuses to pick, so
+co-signing freezes. Without (7) that freeze does not protect the identity, and a client
+MUST NOT say it does: it MUST tell the user the key is compromised in the way an nsec and
+its backup stolen together are, and offer migration — announcing a new key from the old
+one while both sides still can. With (7) on, the frozen key is a real outcome: nothing
+signs for either side until one withdraws.
 
 Two consequences a client MUST state where the recovery share is created. **The phrase
 outranks every device**: against a user who can no longer produce it, whoever can wins.
@@ -1213,7 +1244,7 @@ set 14 can sign any epoch record without a trusted device, and set 1 under Profi
 two trusted devices that already reach `k`. Neither adds anything to the residual. Set
 14 is every co-signer abandoning §6, which §7.3 already prices, and an attacker holding
 both devices of set 1 is outside the table because it holds the key. The recovery share's
-own sets do add one, and §8.4 states it.
+own sets do add one: §8.4 states it, and (7) removes it.
 
 ### 7.5 What a rotation does
 
@@ -1441,16 +1472,17 @@ grant at all**, which breaks the property (5) exists to give while `R` is unseal
 reused, and nowhere else. Unsealed, `R` and every co-signer reach `k` by design: that is
 L2, and it exists only where `n_s = k − 1`.
 
-**What unsealing adds to the residual.** A trusted device, `R` and grants issued to the
-cap weigh `T + 1 + W_cap`, which is `k` at both reference profiles (`2 + 1 + 1 = 4`,
-`2 + 1 + 2 = 5`). Grant issue is immediate (§7.2), so **an attacker holding a trusted
-device and the phrase can issue itself grants and then sign or reconstruct with no
-co-signer**, past §6 and past §7.4's freeze. This is no more than §8.1's factor already
-gives: a device and a trusted-share backup are `2T`, which is `k` under Profile A, and
-`2T` plus one self-issued grant is `k` under Profile B. The recovery factor MUST therefore
-be presented as authority over the whole identity, not as "a backup", and a client MUST
-say that the phrase together with any one trusted device is the key. SPEC_ISSUES.md files
-the constraint that would close it.
+**What unsealing adds to the residual, and what (7) takes away.** A trusted device, `R`
+and grants issued to the cap weigh `T + 1 + W_cap`, which is `k` at both reference
+profiles (`2 + 1 + 1 = 4`, `2 + 1 + 2 = 5`). Grant issue is immediate (§7.2), so **where
+(7) is off, an attacker holding a trusted device and the phrase can issue itself grants
+and then sign or reconstruct with no co-signer**, past §6 and past §7.4's freeze. This is
+no more than §8.1's factor already gives: a device and a trusted-share backup are `2T`,
+which is `k` under Profile A, and `2T` plus one self-issued grant is `k` under Profile B.
+Where (7) is on (§4.2), `T + 1 + W_cap < k` and no set of a device, `R` and grants reaches
+`k`; §4.2 gives the cost in each profile. The recovery factor MUST be presented as
+authority over the whole identity, not as "a backup", and where (7) is off a client MUST
+say that the phrase together with any one trusted device is the key.
 
 ### 8.5 A recovery artifact is required at setup
 

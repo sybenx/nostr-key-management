@@ -11,7 +11,9 @@ Nostr identity
 > devices**, **co-signing servers**, and **temporary app grants** at different
 > weights, in one flat FROST group.
 
-Key words MUST, MUST NOT, SHOULD, MAY are normative.
+Key words MUST, MUST NOT, SHOULD, MAY are normative. A section reference with no
+prefix is to this document; references to the two frozen specifications are always
+written `NKM §…` and `QRST §…`, because several section numbers coincide.
 
 ---
 
@@ -37,13 +39,13 @@ enforce policy but never to act alone.
 
 This document defines a third arrangement over the same primitives: **one `k`-of-`N`
 FROST group in which parties hold different numbers of indices**, so that the weight
-a party carries states how much it is trusted. It reuses NKM's storage ladder (§2),
-its `frost-share` payload profile (§3.3), its delta-polynomial reshare (§7.9), its
-recovery delay (§7.10), and QRST's transfer mechanism unchanged.
+a party carries states how much it is trusted. It reuses NKM §2's storage ladder,
+NKM §3.3's `frost-share` payload profile, NKM §7.9's delta-polynomial reshare, NKM
+§7.10's recovery delay, and QRST's transfer mechanism unchanged.
 
 It is selected in place of NKM §7.4's index scheme, not alongside it. A group
 MUST NOT mix this document's weighted structure with NKM §7.4's replica scheme or
-§7.18's one-index-per-device quorum; the three assign indices by incompatible rules
+NKM §7.18's one-index-per-device quorum; the three assign indices by incompatible rules
 and a member list cannot be read under two of them at once.
 
 Vocabulary is FROSTR's: a **group** has a group public key and a threshold; a
@@ -873,8 +875,8 @@ line are cited beside it.
 
 | Threat | Raw nsec pasted | NIP-46 to a signer app | This document |
 |---|---|---|---|
-| Malicious web app | Holds the key permanently; there is nothing to revoke and no way to learn it happened. | Cannot take the key, but signs whatever the signer's policy permits, for as long as the session stands. | Holds one weight-1 grant that reaches `k` only with every co-signer or a trusted device, signs no destructive kind (§6.1b), expires, and is dropped at the next rotation (§3.3). |
-| Compromised trusted device | Is the key, totally and permanently. | Is the key if that device runs the signer; otherwise one revocable session. | Holds `T = k − 1`: one unit short, delayed and vetoable on trusted-only kinds (§6.1e), cut off immediately by §7.1 and rotated out by §7.2. |
+| Malicious web app | Holds the key permanently; there is nothing to revoke and no way to learn it happened. | Cannot take the key, but signs whatever the signer's policy permits, for as long as the session stands. | Holds one weight-1 grant that reaches `k` only with every co-signer or a trusted device, signs no destructive kind (§6.1(b)), expires, and is dropped at the next rotation (§3.3). |
+| Compromised trusted device | Is the key, totally and permanently. | Is the key if that device runs the signer; otherwise one revocable session. | Holds `T = k − 1`: one unit short, delayed and vetoable on trusted-only kinds (§6.1(e)), cut off immediately by §7.1 and rotated out by §7.2. |
 | Compromised co-signer(s) | No such party exists. | The signer is the only party, so compromising it is compromising the key. | One index each and `n_s < k`, so they neither sign nor rotate alone — but with the live grants they reach `k` (§4.5 sets 10–13), which §7.3 states as accepted. |
 | Malicious grant holder | No analogue; the application was given the key. | Its session signs whatever the signer allows, for as long as the user leaves it connected. | Weight 1, allowlisted kinds only, needs every co-signer or a trusted device, and ends at its expiry or the next rotation, whichever comes first (§5.2). |
 | Grant holder colluding with co-signers | No analogue. | No analogue: one party holds everything, so there is nobody to collude with. | Reaches `k` and is therefore the key (§4.5 sets 10–13); the live-grant budget of constraint (2) is the only bound, and §7.3 refuses to hide it. |
@@ -935,29 +937,29 @@ user having deleted their history.
 
 ### 11.3 How §6 stops it
 
-- **Kind 5 is on the trusted-only list unconditionally (§6.1b).** A grant index cannot
+- **Kind 5 is on the trusted-only list unconditionally (§6.1(b)).** A grant index cannot
   obtain a partial signature for a deletion — not a thousand, not one — and this is a
   refusal rather than a limit. It is enforced by the co-signers, which the app does not
   control and cannot compromise by compromising itself, and by §4.3 a grant needs
   *every* one of them.
-- **Kinds 0, 3 and 10002 are trusted-only unconditionally (§6.1b)**, so the
+- **Kinds 0, 3 and 10002 are trusted-only unconditionally (§6.1(b))**, so the
   wipe-by-replacement variant — empty profile, empty follow list, relay list pointing
   nowhere — is closed on the same grounds.
 - **Every replaceable and addressable kind not on the grant's allowlist is
-  trusted-only (§6.1b)**, so overwriting long-form posts and lists is closed too. This
+  trusted-only (§6.1(b))**, so overwriting long-form posts and lists is closed too. This
   is the clause that covers the kinds nobody has thought of yet, which a per-kind
   denylist cannot.
-- **The reference allowlist is append-only (§6.1a).** Kinds `1`, `6`, `7`, `13`, `16`
+- **The reference allowlist is append-only (§6.1(a)).** Kinds `1`, `6`, `7`, `13`, `16`
   add events; none destroys one. A grant at the reference policy has no destructive
   operation available to it at all.
-- **Rate limits per index (§6.1c)** bound whatever a widened allowlist lets through and
+- **Rate limits per index (§6.1(c))** bound whatever a widened allowlist lets through and
   raise an `ALERT` to every trusted device on the way.
-- **The delay with veto (§6.1e)** covers the case the allowlist cannot: a deletion
+- **The delay with veto (§6.1(e))** covers the case the allowlist cannot: a deletion
   requested from a *trusted* index with only one trusted device in the signing set is
   held, every other trusted device is notified, and any may veto. No partial signature
   exists during the window, so a veto means **no deletion happened**, not that one was
   reversed.
-- **The freeze (§6.1d)** lets any trusted device stop every co-signing round for the
+- **The freeze (§6.1(d))** lets any trusted device stop every co-signing round for the
   group in one act, once anything looks wrong.
 - All of it rests on **§6.0**: a co-signer that is handed a bare sighash sees no kind
   and enforces nothing. The kind-5 tag check of NKM §7.6 applies at every index,
@@ -1001,8 +1003,8 @@ screen as the lock indicator of NKM §7.16.
 ## Appendix A — References
 
 [NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md) — storage ladder (§2), the
-`frost-share` profile (§3.3), blob-store backup (§4.2), threshold signing, the
-delta-polynomial reshare (§7.9) and the recovery delay (§7.10).
+`frost-share` profile (NKM §3.3), blob-store backup (NKM §4.2), threshold signing,
+the delta-polynomial reshare (NKM §7.9) and the recovery delay (NKM §7.10).
 [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md) — payload requirements (§4), profiles
 (§5), consent (§9), the `frost://` light flow (§12.3).
 [SPEC_ISSUES.md](SPEC_ISSUES.md) — the interpretations and gaps this document relies

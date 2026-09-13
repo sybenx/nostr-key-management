@@ -133,3 +133,82 @@ key schedule. Two consequences, both normative:
   parties will count a weight-2 trusted device as two independent signers.
 
 ---
+
+## 3. The three tiers
+
+Every index in the group belongs to exactly one tier, recorded per index in the
+epoch record (§5.3). A party's tier is the tier of its indices; a party MUST NOT
+hold indices of two tiers.
+
+### 3.1 Trusted device — weight `T`
+
+A native application on hardware the user owns, in the sense of NKM §7.1's
+`trusted` role.
+
+- A trusted device holds `T` indices, `T > 1`. `T` is a group-wide constant fixed
+  at activation; all trusted devices have the same weight.
+- **Every index a trusted device holds MUST be stored at NKM §2.1 level 3 where the
+  platform offers one, and MUST NOT be stored at level 1.** The share is
+  enclave-wrapped: the platform keystore holds the wrapping key, the application
+  never sees it, and unwrapping is gated by the device unlock. A party whose
+  platform reaches only level 1 MUST NOT be admitted as a trusted device.
+- A browser origin MUST NOT hold a trusted-device index, at any storage level. NKM
+  §7.1 fixes every browser-origin device as `restricted`, and NKM §2.1 records that
+  a browser is never level 3 because it has no authenticator-bound decryption. A
+  browser that needs to act holds a grant (§3.3).
+- A trusted device MAY issue a grant (§5), MAY revoke one, and MAY initiate a
+  rotation (§7). It cannot complete any of these alone; §4 and §7 say what else is
+  required.
+- A trusted device's `T` peers MUST be co-resident: the same application instance
+  on the same device, unlocked by the same platform authentication. Splitting a
+  trusted device's indices across two machines creates two parties of lower weight
+  wearing one label, and every inequality in §4 is then wrong about it.
+
+### 3.2 Co-signer — weight 1
+
+A server running signer code: a peer that receives sign and ECDH requests, applies
+the policy of §6, and returns a partial signature or refuses.
+
+- A co-signer holds exactly one index. An operator running several co-signing
+  processes for one group holds several indices and is, for every rule here, several
+  co-signers only if those processes are independently administered; otherwise the
+  operator MUST be counted as one party holding that combined weight.
+- **A co-signer MUST enforce §6.** A peer that returns partial signatures without
+  applying policy is not a co-signer under this document, whatever it is called,
+  and a group whose weight budget assumes policy from it is misconfigured.
+- **A co-signer MUST NOT hold a share for a party that does not hold one.** Where a
+  rotation would leave the group with no trusted-device index, a co-signer MUST
+  refuse to take an index in the new epoch and MUST destroy the index it holds. A
+  co-signer that holds weight for a user who holds none is a custodian, and the
+  entire argument of §0 assumes the user holds `T`.
+- A co-signer is not a relay, and a relay is not a co-signer. §8 states the rule
+  that keeps the two apart.
+
+### 3.3 Grant — weight 1
+
+One index held by an untrusted application or device: a web client, a third-party
+signer, a device the user does not fully control.
+
+- A grant holds exactly one index, and its weight is 1 regardless of `T`.
+- **Every grant MUST carry an expiry set at issue** (§5.2). A grant without an
+  expiry MUST NOT be issued and MUST NOT be admitted.
+- **Every grant is dropped at the next rotation, regardless of its expiry.** A
+  rotation's new member list MUST omit every grant index live in the old epoch,
+  whether or not that grant's expiry has passed and whether or not the rotation was
+  performed for any reason connected to it. A grant that is still wanted is
+  reissued as a new index with a new expiry; it is never carried forward.
+- A grant MUST be stored at the best level NKM §2.1 offers on its platform, but no
+  level is required of it. The construction assumes a grant's storage may fail
+  entirely; that is what its weight is for.
+- A grant MUST NOT issue or revoke a grant, MUST NOT initiate a rotation, MUST NOT
+  act as a QRST Sender, and MUST NOT be admitted as a voter under §7.
+
+### 3.4 What the tiers are, in one line each
+
+| Tier | Weight | Held by | May issue and revoke grants | May initiate rotation | Expires | Dropped at rotation |
+|---|---|---|---|---|---|---|
+| Trusted device | `T` | Native app on the user's own hardware, indices at NKM §2.1 level 3 or 2 | Yes | Yes | No | No |
+| Co-signer | 1 | A server running signer code and enforcing §6 | No | No | No | No |
+| Grant | 1 | An untrusted app or device | No | No | Yes, at a time set on issue | Yes, always |
+
+---

@@ -832,3 +832,31 @@ class). In the new device-quorum mode (§7.18) `t` is a parameter: `2` by defaul
 and `3` where the user has three or more independent trusted devices, trading "any
 two present" for "surviving any two compromised." The choice is surfaced only where
 the device list can satisfy it, exactly as the entry proposed.
+
+### TIERS.md §10's threat table understated which sets reach `k` — resolved
+
+**Document:** TIERS.md
+**Section:** §10 (against §4.4, §4.5)
+**Kind:** suspected error
+
+§10 evaluates "this document" at §4.4's reference configuration, two live grants
+included. Three of its cells did not match that configuration's minimal signing sets
+as `tiers_check.py` enumerates them (`vectors/tiers-profile-a.json`), which are the
+thirteen of §4.5:
+
+- *Malicious web app* said the grant "reaches `k` only with every co-signer or a
+  trusted device", and *Malicious grant holder* said it "needs every co-signer or a
+  trusted device". §4.5 sets 12 and 13 (`C1 + G1 + G2`, `C2 + G1 + G2`) reach `k` with
+  one co-signer and the other live grant. §4.3's "every one of them must be in the
+  signing set" is scoped to a grant that is the only live one; the table dropped the
+  scope.
+- *Compromised trusted device* said it "needs co-signers it cannot control" and is
+  "delayed and vetoable on trusted-only kinds (§6.1(e))". §4.5 sets 6 to 9 (`D + G`)
+  reach `k` with a grant and no co-signer, and §6.1(e) is enforced by a co-signer, so
+  the delay covers only the sets that contain one.
+
+**Fix applied:** the two grant cells now read "a trusted device, every co-signer, or a
+co-signer and another live grant (§4.5 sets 6–13)"; the trusted-device cell reads "a
+co-signer or a live grant it does not control (§4.5 sets 2–9); delayed and vetoable on
+trusted-only kinds where a co-signer is in the set (§6.1(e))". No other table in §3.5,
+§4.4, §4.5 or §4.6 disagrees with the script.

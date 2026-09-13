@@ -606,10 +606,11 @@ member list adds one index. A grant is optional: a client MUST NOT issue one whe
 session (§5.0) was asked for, and **nothing in this section applies to a session**,
 which holds no share and is not a rotation.
 
-1. **Authority.** A trusted device initiates. The operation is a rotation in the
-   sense of §7 and MUST satisfy §7's authority in full: the new epoch record is
-   signed by the group, so a trusted device alone cannot issue a grant any more than
-   it can sign alone.
+1. **Authority.** A trusted device initiates. The operation is a grant rotation under
+   §7.2 and MUST satisfy its authority: the new epoch record is signed by the group, so
+   a trusted device alone cannot issue a grant any more than it can sign alone, and
+   every voting co-signer refuses an issue past the grant cap of (6). It is immediate;
+   §7.2's delay is for trusted-set rotations only.
 2. **New polynomial.** The epoch advances by the delta-polynomial reshare of NKM
    §7.9: `f'(x) = f(x) + δ(x)` with `δ(0) = 0` and fresh randomness, every existing
    member applying its own `δ` at each index it holds. NKM §7.9 gives `δ(x) = r·x`,
@@ -625,7 +626,7 @@ which holds no share and is not a rotation.
    `δ` learns nothing about any share; it MUST nonetheless be a trusted device, because
    whoever knows `δ` can carry a revoked member's old share onto the new polynomial
    (NKM §7.9's "a surviving device can hand `r` to a revoked one"). Passing a subset of
-   the identifiers is how a member is dropped, which is how §7.4's rotation removes
+   the identifiers is how a member is dropped, which is how §7.5's rotation removes
    grants. `refresh` cannot change `k` and cannot add an identifier — that is step 4.
 3. **The grant's share is `f'(x_g)`** at a fresh index `x_g` that has never been used
    in this group (§2.2).
@@ -947,6 +948,8 @@ require an instruction from a trusted device and MUST NOT expire on its own, MUS
 be liftable by a grant or by another co-signer, and SHOULD require a different
 trusted device than the one that froze. A freeze MUST take effect within one round:
 a co-signer that has begun a round MUST NOT complete it after receiving a freeze.
+A freeze is an L1 act (§7.4): it does not bind a rotation at L2 or L3, and it is not
+§7.4's conflict freeze, which lifts only on withdrawal.
 
 **Under Profile A, a freeze does not stop two trusted devices.** By (4), `2T ≥ k`, so
 the user's own two devices sign with no co-signer in the set and a freeze is invisible
@@ -974,7 +977,7 @@ device, a co-signer MUST NOT return its partial signature immediately. It MUST:
 
 Where there is no other trusted device in the epoch, the delay elapses on its own,
 exactly as NKM §4.2 provides for a recovery with no registered device — unless one is
-restored from backup inside the window, which §7.5 makes a full trusted device for this
+restored from backup inside the window, which §7.6 makes a full trusted device for this
 purpose. The delay
 does not apply where the signing set already contains two trusted devices: the
 second device's participation is the approval, and a delay on top of it would only
@@ -1025,26 +1028,63 @@ to be cut off in seconds, and a day-long window on that is not a safeguard, it i
 attack. It does not remove the share, and a set that reaches `k` without any
 co-signer is unaffected by it.
 
+A refusal is an act at level L1 of §7.4, and it is bounded like one. It MUST NOT name
+the recovery index (§8.4), it does not bind a rotation at L2 or L3, and it does not void
+the refused index's veto, approval or withdrawal under §7.4, none of which is a signing
+round (§7.6). Otherwise one trusted device could silence another's veto by refusing it
+first.
+
 **Tier 2 — rotation.** Everything below.
 
 ### 7.2 Authority for a rotation
 
-A rotation — a new epoch under §5.1's reshare, whether to revoke an index, to add a
-trusted device, to issue a grant, or to drop expired ones — MUST satisfy all three.
-A session (§5.0) is not a rotation: opening, using and ending one needs none of the
-three, and no delay in this section applies to it.
+A rotation is a new epoch under §5.1's reshare. It is one of two kinds, and they carry
+different authority. A session (§5.0) is neither: opening, using and ending one is not a
+rotation, and nothing in this section, delay included, applies to it.
+
+**Grant rotations are immediate.** Issuing a grant, revoking one, dropping expired
+ones, and a refresh that changes no trusted-device index and no recovery index MUST
+satisfy these three, and need no other authority:
 
 1. **Initiation by a trusted device.** A co-signer MUST NOT initiate, and a grant MUST
-   NOT initiate or vote (§3.3).
+   NOT initiate or vote (§3.3, §7.4's L0).
 2. **Votes totalling `k`** against the proposed new epoch record, of which the
    initiating trusted device contributes its `T` and the remaining `k − T` MUST come
    from co-signers. Because `T < k` (§4.3), **a single trusted device cannot rotate
    alone**: it is always one or more co-signer votes short, and this is the point of
    fixing `T` below `k`.
-3. **The delay of NKM §7.10**, with a notice to **every** trusted device in the current
-   epoch naming the initiator, what the rotation changes, and when it completes; and a
-   **veto** available to any trusted device for the whole window. An approval from a
-   second trusted device completes it immediately. A veto abandons it.
+3. **Constraint (6), checked by every voting co-signer** against the proposed record:
+   live grant weight after the rotation within `W_cap`, and `T + W_cap < k`.
+
+There is no delay and no veto. The rotation completes when the votes are in, and every
+co-signer MUST then send a notice to every trusted device naming the initiator and what
+changed; nothing waits on it.
+
+**Why no delay is safe here: (6).** A grant rotation adds at most `W_cap` of untrusted
+weight, and `T + W_cap < k`, so however many a compromised trusted device performs, no
+set it can form without a co-signer reaches `k`, and §6 runs on everything its grants
+sign. The delay used to be the only thing standing between such a device and a
+self-issued key; (6) is a structural bound in its place, and SPEC_ISSUES.md records
+the change.
+
+**Trusted-set rotations are delayed, with veto.** Any rotation that changes the set of
+trusted-device indices — admitting a trusted device, reissuing trusted weight to a
+device, removing a trusted device — or that creates, reissues under a new factor, or
+removes the recovery share (§8.4) MUST satisfy all three:
+
+1. **Authority at a level of §7.4.** At L1: initiation by a trusted device and votes
+   totalling `k`, its `T` and `k − T` from co-signers, exactly as for a grant rotation.
+2. **The delay of NKM §7.10**, with a notice to **every** trusted device in the current
+   epoch — the target of a removal included — naming the initiator, the level, what the
+   rotation changes, and when it completes.
+3. **Veto as §7.4 allows it.** At L1, any other trusted device, **including the device
+   a rotation would remove**, may veto for the whole window. A veto does not quietly
+   abandon the rotation; it puts the two in conflict under §7.4.
+
+An approval from **every** other trusted device in the current epoch, the target of a
+removal included, completes a trusted-set rotation immediately. A rotation that is both
+— a grant issued in the same epoch change that admits a device — is a trusted-set
+rotation.
 
 The new epoch record is signed by the group with the old shares before any delta is
 applied, exactly as NKM §7.9 step 1 requires, so the vote and the signature are the
@@ -1052,43 +1092,120 @@ same act.
 
 ### 7.3 What this means, stated plainly
 
-**A set of parties totalling weight `k` with no trusted device in it can in principle
-drive a rotation and reissue a trusted-weight share, once the delay elapses.** The
-requirement in 7.2(1) that a trusted device initiate is a rule co-signers follow, not
-a fact the mathematics enforces; the access structure is flat (§2.1) and a weight-`k`
-set can sign any epoch record it likes. In the reference configuration such sets
-exist and are enumerated as set 14 of §4.5. Where `n_s ≥ k` the co-signers
-alone would be such a set, which is the second reason constraint (1) exists.
+**A set of parties totalling weight `k` can sign any epoch record it likes; only policy
+makes that a rotation.** §7.2's requirements and §7.4's levels are rules co-signers
+follow, not facts the mathematics enforces; the access structure is flat (§2.1). In the
+reference configuration the only set without a trusted device is set 14 of §4.5, and it
+contains every co-signer, so the rules fail only if all of them defect. Where `n_s ≥ k`
+the co-signers alone would be such a set, which is the second reason constraint (1)
+exists.
 
-The only thing between that set and the key is 7.2(3)'s delay and veto, and **the
-veto needs a surviving trusted device to cast it.** Where every trusted device is
-lost, the notices reach nobody, the window elapses on its own, and the rotation
-completes — precisely as NKM §4.2 provides for a recovery with no registered `E.pub`.
-§7.5 narrows this without closing it: a device restored from the §8 backup inside the
-window is a trusted device and can veto, so "surviving" means reachable-or-restorable
-rather than online.
+**Losing every trusted device is recoverable through the recovery share, and only
+through it or a §8.1 backup.** A grant has no rotation authority (§7.4's L0), so the
+co-signers and a grant cannot legitimately reissue trusted weight. What can is the
+recovery share at L2: its holder and every co-signer, after the delay, with a notice to
+any trusted device that survives — which cannot veto it, and can only override it at L3
+by also holding the recovery phrase. A trusted device restored from §8.1 inside the
+window is a trusted device for this purpose (§7.6).
 
 **This is the accepted trade, and it is accepted against loss.** A construction in
-which no set without a trusted device could ever rotate would be a construction in
-which losing every trusted device loses the identity permanently, with no server-side
-recovery at all — NKM §7.18's device quorum is that construction, and NKM says so:
-"A quorum with no usable backup and fewer than `t` surviving devices is
-unrecoverable." This document buys a recovery path and pays for it in exactly one
-coin: the co-signers, colluding with enough other weight, are a path to the key after
-a delay. A client MUST state this on the screen where co-signers are enrolled, in
-those terms, and MUST NOT describe co-signers as unable to reach the key.
+which nothing without a trusted device could ever rotate would be a construction in
+which losing every trusted device loses the identity permanently — NKM §7.18's device
+quorum is that construction, and NKM says so: "A quorum with no usable backup and fewer
+than `t` surviving devices is unrecoverable." This document buys a recovery path and
+pays for it in exactly one coin: **whoever holds the recovery phrase, with every
+co-signer's cooperation, rotates after a delay that a trusted device can override but
+not veto.** §7.4 gives the whole case table. A client MUST state this on the screen
+where the recovery share is created and where co-signers are enrolled, in those terms,
+and MUST NOT describe co-signers as unable to reach the key.
 
 Two things narrow it, and neither closes it:
 
-- Constraint (1) means the co-signers need help — a grant, or a trusted device — to
-  reach `k`. The grant cap is therefore a security parameter for this property and
-  not only for §4.5, and a user running no live grants removes the only such set at
-  the reference configuration.
+- Constraint (1) means the co-signers need help — the recovery share, a grant, or a
+  trusted device — to reach `k`. Policy refuses them the grant; the mathematics does
+  not, which is set 14.
 - Co-signers that are independently administered must all defect. §3.2's rule that
   one operator's several processes count as one party is what keeps that from being a
   single decision by a single operator.
 
-### 7.4 What a rotation does
+### 7.4 Rotation authority levels
+
+Every trusted-set rotation carries a **level**, fixed by what signs for it. Co-signers
+hold the state of every pending trusted-set rotation — its level, the proposed epoch
+record, the indices that authorised it, when its delay ends, and every veto, approval,
+withdrawal and cancellation received — and enforce this section as policy. A co-signer
+MUST NOT vote for, apply a delta toward, or acknowledge an epoch record that has not
+completed under it, and MUST forward every proposal, veto, approval and withdrawal it
+receives to every other co-signer, so that no two hold different state for long.
+
+| Level | Authority | Votes to `k` | Delay | Vetoable by | On proposal, cancels |
+|---|---|---|---|---|---|
+| L0 | A grant | None: no authority | — | — | — |
+| L1 | A trusted device | `T`, and `k − T` co-signers | NKM §7.10 | Any other trusted device, the target of a removal included | Nothing |
+| L2 | The unsealed recovery share (§8.4) | `1`, and every co-signer | NKM §7.10 | Nothing at L1 | Every pending L1 rotation |
+| L3 | The recovery share and a trusted device | `1 + T`, and `k − T − 1` co-signers | NKM §7.10 | Nothing at L1 or L2 | Every pending L1 and L2 rotation |
+
+- **L0: a grant has no rotation authority, including as part of a weight-`k` set.** A
+  co-signer MUST NOT count a grant index toward any rotation and MUST refuse to vote in
+  a rotation session whose members include one.
+- **L2 needs every co-signer.** The recovery share weighs 1 and (1) allows at most
+  `k − 1` co-signers, so it reaches `k` only where `n_s = k − 1`, with all of them. Both
+  reference profiles have `n_s = k − 1`. A group with fewer co-signers has no L2, and its
+  recovery share is usable only at L3.
+- **Precedence.** A proposal at a higher level cancels every pending lower-level one
+  the moment co-signers accept it, and they MUST notify each cancelled initiator. While
+  an L2 or L3 rotation is pending, co-signers MUST refuse every new rotation at a lower
+  level, grant rotations included. §6.1(d)'s freeze and §7.1's refusal are L1 acts and
+  bind nothing at L2 or L3.
+- **One pending trusted-set rotation per level.** A second, different proposal at the
+  same level from a different authority is a conflict, as a veto is. An authority that
+  revises its own proposal withdraws the first.
+
+**Conflict at an equal level freezes the group.** A conflict is an L1 veto, or two
+different pending proposals at the same level. On conflict every co-signer MUST refuse
+all co-signing for the group — every kind, every index, grant rotations and L1
+rotations included — until one side withdraws:
+
+- **At L1**, the vetoing device withdraws its veto and the rotation resumes its window,
+  or the initiator withdraws the rotation and it is abandoned.
+- **At L3**, each side is identified by the trusted device in its authority, and
+  withdraws its own proposal by that device's signature.
+- **At L2**, the two sides hold the same credential and cannot be told apart, so a
+  withdrawal signed by the recovery share withdraws every pending L2 proposal at once.
+
+If neither side withdraws, the freeze does not lift on its own, no trusted device can
+lift it (§6.1(d)'s lift does not apply), and **the key stays frozen**. A rotation at a
+higher level is not blocked by a conflict freeze below it, and ends that freeze when it
+completes; nothing is above L3.
+
+**What each side can do.** "Holds the phrase" means can produce the recovery factor; a
+phrase the attacker copied is still held by the user. A device restored from §8.1 is a
+held trusted device (§7.6).
+
+| Attacker holds | User holds a trusted device | User holds the phrase only | User holds a device and the phrase |
+|---|---|---|---|
+| **A trusted device** | **Freeze.** Either side's L1 proposal meets the other's veto, and neither signs through a co-signer until one withdraws. The user's way out is the phrase. | **User wins.** An L2 rotation removes the attacker's device and admits the user's; the device cannot veto it, and its own pending L1 is cancelled. | **User wins** at L2, or L3. The attacker has nothing above L1. |
+| **The phrase** | **Attacker wins.** Its L2 rotation cannot be vetoed by the user's device and cancels any pending L1, including a reissue of the recovery share under a new phrase that had not yet completed. | **Freeze.** Two L2 proposals under one credential; a withdrawal by either withdraws both. | **User wins.** An L3 rotation cancels the attacker's L2. |
+| **A trusted device and the phrase** | **Attacker wins,** at L2 or L3. | **Attacker wins.** Its L3 cancels the user's L2. | **Freeze.** Two L3 proposals, each withdrawable only by its own device. |
+
+**The last cell is the intended outcome.** An attacker holding a trusted device and the
+recovery phrase holds everything the user holds; nothing the co-signers can observe
+tells the two apart, and the protocol refuses to pick. A frozen key is the result,
+stated to the user in those terms.
+
+Two consequences a client MUST state where the recovery share is created. **The phrase
+outranks every device**: against a user who can no longer produce it, whoever can wins.
+And **reissuing the recovery share under a new phrase is a trusted-set rotation**,
+delayed like any other, so a phrase known to be exposed is safe only once that rotation
+completes.
+
+**The table is policy.** The collusion sets of §4.5 can bypass it cryptographically:
+set 14 can sign any epoch record without a trusted device, and set 1 under Profile A is
+two trusted devices that already reach `k`. Neither adds anything to the residual. Set
+14 is every co-signer abandoning §6, which §7.3 already prices, and an attacker holding
+both devices of set 1 is outside the table because it holds the key.
+
+### 7.5 What a rotation does
 
 - The new member list MUST omit every grant index live in the old epoch (§3.3), with
   no exception for unexpired ones.
@@ -1103,29 +1220,29 @@ Two things narrow it, and neither closes it:
   applies unchanged.
 - Co-signers MUST discard every grant record on entering the new epoch (§5.3).
 
-### 7.5 A restored trusted device is a trusted device
+### 7.6 A restored trusted device is a trusted device
 
 A device that restores a trusted share from the backup of §8 holds the same `T`
 indices at the same epoch as the device it restores. **For every rule in this document
-it is that trusted device.** It MAY cast a veto under §6.1(e) and §7.2(3), MAY approve,
+it is that trusted device.** It MAY cast a veto under §6.1(e) and §7.4, MAY approve,
 MAY freeze and lift a freeze under §6.1(d), MAY issue a tier-1 refusal under §7.1, and
 MAY initiate a rotation under §7.2. Nothing in this document distinguishes a restored
 holder of an index from the original holder, because the index is what the rules are
 written over.
 
-**So recovery-from-backup and the delay path compose.** A rotation's window (§7.2(3))
-is not only a notice period; it is long enough to be a *recovery* period. A user with
-no trusted device reachable when a rotation starts can restore one from §8 inside the
-window and veto — which is the difference between §7.3's worst case being unavoidable
-and being merely the case where nobody restores in time.
+**So recovery-from-backup and the delay path compose.** A trusted-set rotation's
+window (§7.2) is not only a notice period; it is long enough to be a *recovery* period.
+A user with no trusted device reachable when an L1 rotation starts can restore one from
+§8.1 inside the window and veto it. A restored device cannot veto an L2 rotation; a user
+who also holds the recovery phrase overrides one at L3 (§7.4).
 
 For this to hold, three things are required of co-signers, and each of them is a way
 an implementation could break it by accident:
 
-- A co-signer MUST address §6.1(e) and §7.2(3) notices to the **trusted-device indices
+- A co-signer MUST address §6.1(e), §7.2 and §7.4 notices to the **trusted-device indices
   of the current epoch**, not to the devices that were recently online.
-- A co-signer MUST accept a veto or an approval on the strength of a signature by a
-  trusted-device index of the current epoch alone. It MUST NOT require prior liveness,
+- A co-signer MUST accept a veto, an approval or a withdrawal on the strength of a
+  signature by a trusted-device index of the current epoch alone. It MUST NOT require prior liveness,
   session state, a registration step, or any "known device" marker that a device
   restored ten minutes ago cannot present.
 - A co-signer MUST NOT let §6.1(c)'s rate limits refuse a veto. Vetoes and freezes are
@@ -1150,8 +1267,11 @@ indices as the device it restored, which §2.2 forbids two peers from doing. Unt
 rotation the original and the restoration are **one party** for every quorum rule: a
 co-signer MUST NOT count an approval from an index and a veto from the same index as
 two parties, and MUST NOT treat `D1`-restored plus `D1`-original as satisfying
-§6.1(e)'s "two trusted devices in the signing set". A restore SHOULD be followed
-promptly by a rotation that reissues the restored device its own indices.
+§6.1(e)'s "two trusted devices in the signing set". Where the two disagree — a proposal
+and a veto signed by the same index — co-signers MUST treat it as a §7.4 conflict that a
+withdrawal by that index resolves in full, as at L2, because the two cannot be told
+apart. A restore SHOULD be followed promptly by a rotation that reissues the restored
+device its own indices.
 
 ---
 
@@ -1198,7 +1318,7 @@ Each container is NIP-59 gift-wrapped to a **burner** key and published to relay
   backup. This is QRST's transport property and is inherited, not re-argued.
 
 **A backup goes stale at every rotation, including every grant issue.** A rotation
-moves every member to a new polynomial (§7.4), so a container holding an old epoch's
+moves every member to a new polynomial (§7.5), so a container holding an old epoch's
 indices restores a device whose shares no longer pair with anything. The client MUST
 republish the backup for the new epoch as part of the rotation, and **a rotation MUST
 NOT be finalised until the new backup has been published and verified**. A client that
@@ -1227,7 +1347,7 @@ This is normative and is the point of the section.
   Profile B it is the factor plus `k − T` co-signers. The factor
   MUST be treated by the client as material of the same sensitivity as a trusted
   device's storage, and the screen that presents it MUST say so rather than describing
-  it as "a backup". §7.5 adds the other half: whoever restores from it can veto, approve
+  it as "a backup". §7.6 adds the other half: whoever restores from it can veto, approve
   and freeze, so the factor carries a trusted device's *authority* as well as its
   weight.
 
@@ -1335,13 +1455,13 @@ line are cited beside it.
 | Threat | Raw nsec pasted | NIP-46 to a signer app | This document |
 |---|---|---|---|
 | Malicious web app | Holds the key permanently; there is nothing to revoke and no way to learn it happened. | Cannot take the key, but signs whatever the signer's policy permits, for as long as the session stands. | By default holds no share: a session (§5.0) signs only what the trusted device approves, through co-signers, and ends the moment the user ends it. Where given a grant instead, holds one weight-1 grant that reaches `k` only with a trusted device and a co-signer (§4.5 sets 8–13) or with every co-signer (set 14), signs no destructive kind (§6.1(b)), expires, and is dropped at the next rotation (§3.3). |
-| Compromised trusted device | Is the key, totally and permanently. | Is the key if that device runs the signer; otherwise one revocable session. | Holds `T`, short of `k` by §4.3, so it needs co-signers it does not control (§4.5 sets 2–13); by (6) no grant it issues itself replaces them; delayed and vetoable on trusted-only kinds where a co-signer is in the set (§6.1(e)), cut off immediately by §7.1, rotated out by §7.2. |
+| Compromised trusted device | Is the key, totally and permanently. | Is the key if that device runs the signer; otherwise one revocable session. | Holds `T`, short of `k` by §4.3, so it needs co-signers it does not control (§4.5 sets 2–13); by (6) no grant it issues itself replaces them; delayed and vetoable on trusted-only kinds where a co-signer is in the set (§6.1(e)), cut off immediately by §7.1. It changes the trusted set only at L1 (§7.4): delayed, vetoable by any other trusted device, and cancelled outright by the recovery share at L2. Where it and another trusted device disagree, co-signing freezes and the recovery phrase decides. |
 | Compromised co-signer(s) | No such party exists. | The signer is the only party, so compromising it is compromising the key. | One index each and `n_s < k`, so they neither sign nor rotate alone — but all of them with the live grant reach `k` (§4.5 set 14), which §7.3 states as accepted. |
 | Malicious grant holder | No analogue; the application was given the key. | Its session signs whatever the signer allows, for as long as the user leaves it connected. | Weight 1, allowlisted kinds only, needs a trusted device and a co-signer, or every co-signer (§4.5 sets 8–14), and ends at its expiry or the next rotation, whichever comes first (§5.2). |
 | Grant holder colluding with co-signers | No analogue. | No analogue: one party holds everything, so there is nobody to collude with. | With every co-signer, reaches `k` and is therefore the key (§4.5 set 14); the grant cap of constraints (2) and (6) is the only bound, and §7.3 refuses to hide it. |
 | Malicious signer app | Has the key the moment it is pasted in. | Holds the whole key by design; its scoping is its own code and it may ignore it. | Holds at most a grant, or `T` if the user made it a trusted device; the policy that binds it runs on parties it does not control (§6). |
 | Phishing of a consent screen | Yields the key; the screen is the only control and the attacker wrote it. | Yields a connection the user believes is scoped, where the scope is asserted by the page requesting it. | Yields at most a session or one grant at its allowlist — except a fake backup-factor screen, which yields a trusted device's weight (§8.3) and is the residual. |
-| Device loss | Is the key, behind whatever the device's storage offered; no revocation exists. | Is one revocable session, or the key if the lost device ran the signer. | Weight `T` at NKM §2.1 level 3, inert until a second party is taken; refusal is immediate (§7.1) and rotation removes it (§7.2). |
+| Device loss | Is the key, behind whatever the device's storage offered; no revocation exists. | Is one revocable session, or the key if the lost device ran the signer. | Weight `T` at NKM §2.1 level 3, inert until a second party is taken; refusal is immediate (§7.1), and an L1 rotation removes it after the delay, which a lost device can veto only if someone has unlocked it — and then the recovery phrase decides (§7.4). |
 
 **The two rows that are not improvements.** "Grant holder colluding with co-signers"
 has no analogue in the other two columns because they have no such parties, so the
@@ -1442,7 +1562,7 @@ is not small.
   notice before the delay elapses, the deletion completes.** Where the user has no
   second trusted device, the window elapses on its own by construction, exactly as NKM
   §4.2 provides for a recovery with no registered device — the notice has nobody to
-  reach, unless the user restores one inside the window (§7.5). **This bullet survives
+  reach, unless the user restores one inside the window (§7.6). **This bullet survives
   both profiles**; Profile B does not touch it, because a single trusted device plus
   co-signers is the working path under either.
 - **Under Profile A**, an attacker holding **two** trusted devices is outside this
@@ -1466,7 +1586,7 @@ What the residual reduces to: **the window, the number of trusted devices, and t
 profile.** A user with two trusted devices, both read by a person, has a mass deletion
 held for a day and cancellable in one tap. A user with one has a mass deletion delayed
 by a day and then completed — unless they restore a second trusted device from the §8
-backup inside the window, which §7.5 makes a full veto, and which works only where the
+backup inside the window, which §7.6 makes a full veto, and which works only where the
 backup factor is reachable independently of the compromised device. Under Profile A a
 user whose two trusted devices are both taken has no delay at all; under Profile B that
 case does not exist. A client SHOULD say which of these the user is in, on the same

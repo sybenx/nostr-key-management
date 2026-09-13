@@ -860,3 +860,42 @@ co-signer and another live grant (§4.5 sets 6–13)"; the trusted-device cell r
 co-signer or a live grant it does not control (§4.5 sets 2–9); delayed and vetoable on
 trusted-only kinds where a co-signer is in the set (§6.1(e))". No other table in §3.5,
 §4.4, §4.5 or §4.6 disagrees with the script.
+
+### TIERS.md §7.2 delayed every rotation, which was a UX bug and an accidental safeguard — resolved
+
+**Document:** TIERS.md
+**Section:** §7.2 (and §5.1 step 1, §4.2, §7.4; README.md §3)
+**Kind:** suspected error
+
+§7.2 required every rotation — "whether to revoke an index, to add a trusted device, to
+issue a grant, or to drop expired ones" — to wait out NKM §7.10's delay, with a veto for
+any trusted device, and §5.1 step 1 made grant issue a rotation "in the sense of §7" with
+that authority "in full". The earlier entry *"k co-signer votes" is unsatisfiable by
+co-signers* already took the delay off tier-1 refusal; it stayed on everything else.
+
+**As a UX bug.** Logging an application in with a grant waited a day for any user
+without a second trusted device to approve it — the README's rewrite had to tell users
+so — and so did revoking a grant by rotation and dropping expired ones. Nothing the delay
+protected against at those operations was the user's to fear from their own device, and
+the cost landed on the single-device user, who is the common case.
+
+**As an accidental safeguard.** At the then-reference `k = 3, T = 2`, a trusted device
+and one grant reached `k` with no co-signer (the old §4.5 sets 6 to 9, now Appendix C). A
+compromised device could issue itself a grant and hold the key. The only thing in the
+document between that device and the key was this delay: a second trusted device read
+the notice and vetoed. Nothing stated that the delay was doing this, no inequality in §4
+backed it, and for a user with one trusted device it did nothing, because the window
+elapsed on its own. Removing the delay as a UX fix without replacing it would have turned
+a slow, vetoable attack into an immediate one.
+
+**Fix applied.** Constraint (6), `T + W_cap < k` (§4.2), replaces the accidental
+safeguard with a structural one: no set a trusted device can form with grants reaches
+`k`, however many it issues. With (6) holding, §7.2 now makes grant issue, grant
+revocation, dropping expired grants and a refresh that changes no trusted or recovery
+index **immediate**, needing only a trusted device and co-signer votes to weight `k`, with
+every co-signer checking the grant cap. The delay applies only to trusted-set rotations —
+admitting, reissuing or removing trusted weight, and creating, re-keying or removing the
+recovery share — at the authority levels of the new §7.4. Removal is included because an
+immediate removal lets one compromised device evict the user's other device and then add
+its own with nobody left to veto; the target of a removal may veto it, and the stalemate
+that leaves is resolved by §7.4's levels rather than by first mover.

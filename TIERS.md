@@ -729,7 +729,9 @@ device, a co-signer MUST NOT return its partial signature immediately. It MUST:
    veto.
 
 Where there is no other trusted device in the epoch, the delay elapses on its own,
-exactly as NKM §4.2 provides for a recovery with no registered device. The delay
+exactly as NKM §4.2 provides for a recovery with no registered device — unless one is
+restored from backup inside the window, which §7.5 makes a full trusted device for this
+purpose. The delay
 does not apply where the signing set already contains two trusted devices: the
 second device's participation is the approval, and a delay on top of it would only
 make the user's own hardware slower than the attacker's path.
@@ -816,6 +818,9 @@ The only thing between that set and the key is 7.2(3)'s delay and veto, and **th
 veto needs a surviving trusted device to cast it.** Where every trusted device is
 lost, the notices reach nobody, the window elapses on its own, and the rotation
 completes — precisely as NKM §4.2 provides for a recovery with no registered `E.pub`.
+§7.5 narrows this without closing it: a device restored from the §8 backup inside the
+window is a trusted device and can veto, so "surviving" means reachable-or-restorable
+rather than online.
 
 **This is the accepted trade, and it is accepted against loss.** A construction in
 which no set without a trusted device could ever rotate would be a construction in
@@ -851,6 +856,56 @@ Two things narrow it, and neither closes it:
   cannot verify MUST NOT discard its old-epoch share; NKM §7.4's retention rule
   applies unchanged.
 - Co-signers MUST discard every grant record on entering the new epoch (§5.3).
+
+### 7.5 A restored trusted device is a trusted device
+
+A device that restores a trusted share from the backup of §8 holds the same `T`
+indices at the same epoch as the device it restores. **For every rule in this document
+it is that trusted device.** It MAY cast a veto under §6.1(e) and §7.2(3), MAY approve,
+MAY freeze and lift a freeze under §6.1(d), MAY issue a tier-1 refusal under §7.1, and
+MAY initiate a rotation under §7.2. Nothing in this document distinguishes a restored
+holder of an index from the original holder, because the index is what the rules are
+written over.
+
+**So recovery-from-backup and the delay path compose.** A rotation's window (§7.2(3))
+is not only a notice period; it is long enough to be a *recovery* period. A user with
+no trusted device reachable when a rotation starts can restore one from §8 inside the
+window and veto — which is the difference between §7.3's worst case being unavoidable
+and being merely the case where nobody restores in time.
+
+For this to hold, three things are required of co-signers, and each of them is a way
+an implementation could break it by accident:
+
+- A co-signer MUST address §6.1(e) and §7.2(3) notices to the **trusted-device indices
+  of the current epoch**, not to the devices that were recently online.
+- A co-signer MUST accept a veto or an approval on the strength of a signature by a
+  trusted-device index of the current epoch alone. It MUST NOT require prior liveness,
+  session state, a registration step, or any "known device" marker that a device
+  restored ten minutes ago cannot present.
+- A co-signer MUST NOT let §6.1(c)'s rate limits refuse a veto. Vetoes and freezes are
+  not signing rounds and are not counted against a signing budget.
+
+Three limits, stated because the composition is easy to overstate:
+
+- **It needs a current backup.** §8.2 requires republication as part of every rotation
+  and forbids finalising one until the new backup is verified, which is exactly what
+  makes a restore land on the current epoch. A stale backup restores indices on a dead
+  polynomial and can veto nothing.
+- **It needs the factor to be reachable independently of whatever went wrong.** Where
+  the factor is a passkey PRF held on the compromised device itself, restoring gives an
+  attacker a second copy and the user nothing. The paper secret of §8.1 is the form that
+  survives losing the device, and a client SHOULD say which of the two the user has.
+- **Whoever can restore can veto, including an attacker.** §8.3 puts the factor at the
+  sensitivity of a trusted device; this section is one more reason why. A phished factor
+  buys a veto and a freeze as well as a share.
+
+**A restored device is not a second party.** Until the next rotation it holds the same
+indices as the device it restored, which §2.2 forbids two peers from doing. Until that
+rotation the original and the restoration are **one party** for every quorum rule: a
+co-signer MUST NOT count an approval from an index and a veto from the same index as
+two parties, and MUST NOT treat `D1`-restored plus `D1`-original as satisfying
+§6.1(e)'s "two trusted devices in the signing set". A restore SHOULD be followed
+promptly by a rotation that reissues the restored device its own indices.
 
 ---
 
@@ -925,7 +980,9 @@ This is normative and is the point of the section.
   the reference configuration, so the factor plus one co-signer is the key. The factor
   MUST be treated by the client as material of the same sensitivity as a trusted
   device's storage, and the screen that presents it MUST say so rather than describing
-  it as "a backup".
+  it as "a backup". §7.5 adds the other half: whoever restores from it can veto, approve
+  and freeze, so the factor carries a trusted device's *authority* as well as its
+  weight.
 
 Where an NKM §4.2 blob-store backup of the **nsec** also exists — NKM §7.5 records
 that it survives activation by design — it holds the whole key and outranks every

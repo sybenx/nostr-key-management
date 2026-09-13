@@ -1,0 +1,1126 @@
+{
+  "spec": "TIERS.md",
+  "version": "1.0-draft",
+  "section": "4.6",
+  "description": "Profile B (§4.6): k = 5, T = 2, four co-signers, s = 1, at every count of trusted devices in §4.6's table and every live-grant weight (2) permits. Each case's optional.5 is the table's answer for that row; the k = 7 cases check the paragraph beneath the table, which says two trusted devices and two grants need k >= 7 and that k = 7 holds (5) only at D <= 2. Every case satisfies the required constraints and fails (4), which is what declining it means. set_counts gives the number of minimal signing sets under each label, counted from binomial coefficients over the set's composition rather than by listing sets; (5) holds exactly where no-co-signer is 0.",
+  "table_4_6": [
+    {
+      "D": 1,
+      "W_g_for_5": "up to 2"
+    },
+    {
+      "D": 2,
+      "W_g_for_5": "0"
+    },
+    {
+      "D": "3 or more",
+      "W_g_for_5": "(5) cannot hold"
+    }
+  ],
+  "labels": {
+    "no-co-signer": "No co-signer in the set: §6 policy never runs.",
+    "collusion": "A co-signer and no trusted device.",
+    "mixed": "A trusted device, a co-signer and a grant.",
+    "trusted": "Trusted devices and co-signers only."
+  },
+  "cases": [
+    {
+      "name": "k=5, D=1, W_g=0",
+      "membership": {
+        "k": 5,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4"
+        ],
+        "grants": []
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": true
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {}
+        },
+        "set_counts": {
+          "trusted": 4,
+          "mixed": 0,
+          "collusion": 0,
+          "no-co-signer": 0
+        }
+      }
+    },
+    {
+      "name": "k=5, D=1, W_g=1",
+      "membership": {
+        "k": 5,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": true
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0
+          }
+        },
+        "set_counts": {
+          "trusted": 4,
+          "mixed": 6,
+          "collusion": 1,
+          "no-co-signer": 0
+        }
+      }
+    },
+    {
+      "name": "k=5, D=1, W_g=2",
+      "membership": {
+        "k": 5,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          },
+          {
+            "party": "G2",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": true
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0,
+            "G2": 0
+          }
+        },
+        "set_counts": {
+          "trusted": 4,
+          "mixed": 16,
+          "collusion": 6,
+          "no-co-signer": 0
+        }
+      }
+    },
+    {
+      "name": "k=5, D=1, W_g=3",
+      "membership": {
+        "k": 5,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          },
+          {
+            "party": "G2",
+            "weight": 1
+          },
+          {
+            "party": "G3",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": false
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0,
+            "G2": 0,
+            "G3": 0
+          }
+        },
+        "set_counts": {
+          "trusted": 4,
+          "mixed": 30,
+          "collusion": 21,
+          "no-co-signer": 1
+        }
+      }
+    },
+    {
+      "name": "k=5, D=1, W_g=4",
+      "membership": {
+        "k": 5,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          },
+          {
+            "party": "G2",
+            "weight": 1
+          },
+          {
+            "party": "G3",
+            "weight": 1
+          },
+          {
+            "party": "G4",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": false
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0,
+            "G2": 0,
+            "G3": 0,
+            "G4": 0
+          }
+        },
+        "set_counts": {
+          "trusted": 4,
+          "mixed": 48,
+          "collusion": 56,
+          "no-co-signer": 4
+        }
+      }
+    },
+    {
+      "name": "k=5, D=2, W_g=0",
+      "membership": {
+        "k": 5,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1",
+          "D2"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4"
+        ],
+        "grants": []
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": true
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {}
+        },
+        "set_counts": {
+          "trusted": 12,
+          "mixed": 0,
+          "collusion": 0,
+          "no-co-signer": 0
+        }
+      }
+    },
+    {
+      "name": "k=5, D=2, W_g=1",
+      "membership": {
+        "k": 5,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1",
+          "D2"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": false
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0
+          }
+        },
+        "set_counts": {
+          "trusted": 12,
+          "mixed": 12,
+          "collusion": 1,
+          "no-co-signer": 1
+        }
+      }
+    },
+    {
+      "name": "k=5, D=2, W_g=2",
+      "membership": {
+        "k": 5,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1",
+          "D2"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          },
+          {
+            "party": "G2",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": false
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0,
+            "G2": 0
+          }
+        },
+        "set_counts": {
+          "trusted": 12,
+          "mixed": 32,
+          "collusion": 6,
+          "no-co-signer": 2
+        }
+      }
+    },
+    {
+      "name": "k=5, D=2, W_g=3",
+      "membership": {
+        "k": 5,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1",
+          "D2"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          },
+          {
+            "party": "G2",
+            "weight": 1
+          },
+          {
+            "party": "G3",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": false
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0,
+            "G2": 0,
+            "G3": 0
+          }
+        },
+        "set_counts": {
+          "trusted": 12,
+          "mixed": 60,
+          "collusion": 21,
+          "no-co-signer": 5
+        }
+      }
+    },
+    {
+      "name": "k=5, D=2, W_g=4",
+      "membership": {
+        "k": 5,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1",
+          "D2"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          },
+          {
+            "party": "G2",
+            "weight": 1
+          },
+          {
+            "party": "G3",
+            "weight": 1
+          },
+          {
+            "party": "G4",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": false
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0,
+            "G2": 0,
+            "G3": 0,
+            "G4": 0
+          }
+        },
+        "set_counts": {
+          "trusted": 12,
+          "mixed": 96,
+          "collusion": 56,
+          "no-co-signer": 12
+        }
+      }
+    },
+    {
+      "name": "k=5, D=3, W_g=0",
+      "membership": {
+        "k": 5,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1",
+          "D2",
+          "D3"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4"
+        ],
+        "grants": []
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": false
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {}
+        },
+        "set_counts": {
+          "trusted": 24,
+          "mixed": 0,
+          "collusion": 0,
+          "no-co-signer": 1
+        }
+      }
+    },
+    {
+      "name": "k=5, D=3, W_g=1",
+      "membership": {
+        "k": 5,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1",
+          "D2",
+          "D3"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": false
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0
+          }
+        },
+        "set_counts": {
+          "trusted": 24,
+          "mixed": 18,
+          "collusion": 1,
+          "no-co-signer": 4
+        }
+      }
+    },
+    {
+      "name": "k=5, D=3, W_g=2",
+      "membership": {
+        "k": 5,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1",
+          "D2",
+          "D3"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          },
+          {
+            "party": "G2",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": false
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0,
+            "G2": 0
+          }
+        },
+        "set_counts": {
+          "trusted": 24,
+          "mixed": 48,
+          "collusion": 6,
+          "no-co-signer": 7
+        }
+      }
+    },
+    {
+      "name": "k=5, D=3, W_g=3",
+      "membership": {
+        "k": 5,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1",
+          "D2",
+          "D3"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          },
+          {
+            "party": "G2",
+            "weight": 1
+          },
+          {
+            "party": "G3",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": false
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0,
+            "G2": 0,
+            "G3": 0
+          }
+        },
+        "set_counts": {
+          "trusted": 24,
+          "mixed": 90,
+          "collusion": 21,
+          "no-co-signer": 13
+        }
+      }
+    },
+    {
+      "name": "k=5, D=3, W_g=4",
+      "membership": {
+        "k": 5,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1",
+          "D2",
+          "D3"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          },
+          {
+            "party": "G2",
+            "weight": 1
+          },
+          {
+            "party": "G3",
+            "weight": 1
+          },
+          {
+            "party": "G4",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": false
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0,
+            "G2": 0,
+            "G3": 0,
+            "G4": 0
+          }
+        },
+        "set_counts": {
+          "trusted": 24,
+          "mixed": 144,
+          "collusion": 56,
+          "no-co-signer": 25
+        }
+      }
+    },
+    {
+      "name": "k=7, D=1, W_g=2",
+      "membership": {
+        "k": 7,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4",
+          "C5",
+          "C6"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          },
+          {
+            "party": "G2",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": true
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0,
+            "G2": 0
+          }
+        },
+        "set_counts": {
+          "trusted": 6,
+          "mixed": 50,
+          "collusion": 8,
+          "no-co-signer": 0
+        }
+      }
+    },
+    {
+      "name": "k=7, D=2, W_g=2",
+      "membership": {
+        "k": 7,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1",
+          "D2"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4",
+          "C5",
+          "C6"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          },
+          {
+            "party": "G2",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": true
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0,
+            "G2": 0
+          }
+        },
+        "set_counts": {
+          "trusted": 32,
+          "mixed": 136,
+          "collusion": 8,
+          "no-co-signer": 0
+        }
+      }
+    },
+    {
+      "name": "k=7, D=3, W_g=2",
+      "membership": {
+        "k": 7,
+        "T": 2,
+        "s": 1,
+        "trusted_devices": [
+          "D1",
+          "D2",
+          "D3"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3",
+          "C4",
+          "C5",
+          "C6"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          },
+          {
+            "party": "G2",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 0,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "optional": {
+          "4": false,
+          "5": false
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0,
+            "G2": 0
+          }
+        },
+        "set_counts": {
+          "trusted": 84,
+          "mixed": 258,
+          "collusion": 8,
+          "no-co-signer": 2
+        }
+      }
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 # Test vectors
 
-Known answers for the derivations in [QR_SECRET_TRANSFER.md](../QR_SECRET_TRANSFER.md)
-and [NOSTR_KEY_MANAGEMENT.md](../NOSTR_KEY_MANAGEMENT.md). An implementation that
+Known answers for the derivations in [QR_SECRET_TRANSFER.md](../QR_SECRET_TRANSFER.md),
+[NOSTR_KEY_MANAGEMENT.md](../NOSTR_KEY_MANAGEMENT.md) and [TIERS.md](../TIERS.md). An implementation that
 reproduces every value here has read the specification the way three independent
 readings of it did.
 
@@ -19,6 +19,9 @@ None belongs to anybody, and none should ever be used for anything.
 |---|---|
 | `qrst-sas.json` | QRST §6 — the commit, the transcript hash, and the five digits. |
 | `nkm-frost.json` | NKM §7.4, §7.5, §7.9, §7.18 — dealing, share verification, signing, rotation. |
+| `tiers-profile-a.json` | TIERS §4.4, §4.5 — Profile A's reference membership, its constraint results and slacks, and all thirteen minimal signing sets in the table's order. |
+| `tiers-profile-b.json` | TIERS §4.6 — Profile B at every row of the (5) table and every grant budget (2) allows, with the number of minimal sets under each label. |
+| `tiers-rejected.json` | TIERS §2.2, §3.1, §3.2, §4.2, §4.3, §4.6 — one membership per constraint that fails. |
 
 ## Provenance
 
@@ -47,6 +50,20 @@ deliberately **false** (`t3[*].nkm_degree1_form_holds`): §7.18 offers `t = 3` a
 states a share check that does not hold at that threshold, and an implementation
 that reproduces the `false` has read the section correctly and found it
 unimplementable as written. See [SPEC_ISSUES.md](../SPEC_ISSUES.md).
+
+The three `tiers-*.json` files were built from TIERS.md's own statements — the
+inequalities of §4.2 and §4.6 evaluated by hand, §4.5's table transcribed row by row,
+and Profile B's set counts taken from binomial coefficients over each set's
+composition — without running [`tiers_check.py`](../tiers_check.py), which is then
+checked against them by [`test_tiers_check.py`](../test_tiers_check.py). The test also
+checks the script's enumeration against a brute-force powerset wherever the membership
+is small enough, and requires the enumeration and the inequalities to agree: (5) holds
+exactly when no minimal set lacks a co-signer, (1) fails exactly when co-signers alone
+form one, and (2) exactly when grants alone do. Party names are fixtures.
+
+```
+python3 -m unittest test_tiers_check
+```
 
 ## What is still missing
 

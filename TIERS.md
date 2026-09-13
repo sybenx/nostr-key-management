@@ -891,3 +891,143 @@ trusted device, and NKM §7.13's argument for why a generated phrase resists phi
 is the whole of the answer.
 
 ---
+
+## 11. Mass deletion
+
+This section exists because mass deletion is the attack this document is shaped
+around, and because the arrangement it replaces cannot stop it.
+
+### 11.1 The attack
+
+An application with signing access publishes kind-5 deletion requests naming every
+event the identity has ever published — by `e` tag for regular events, by `a`
+coordinate for addressable ones — and replaces the identity's kind-0, kind-3 and
+kind-10002 events with empty ones. The signatures are valid, so no relay and no
+reader can distinguish any of it from the user acting. Relays that honour deletions
+drop the events, and there is no undo: a deletion is a request relays act on, not a
+transaction to roll back.
+
+Three properties make it worse than it first reads. It is **cheap** — one signing
+session carries many sighashes, so thousands of deletions are a handful of rounds,
+not thousands. It is **fast**, and finishes well inside the time a person takes to
+notice anything. And it is **quiet**: the user's own clients render the result as the
+user having deleted their history.
+
+### 11.2 Why per-app signer policy alone cannot stop it
+
+- **The policy and the key are held by the same party.** A remote signer's per-app
+  scoping is local configuration in the process that holds the whole nsec. Compromise
+  that process and the scoping goes with it. A control administered by the party it
+  constrains is a preference.
+- **Allowing kind 5 at all allows all of it.** "Delete my own last post" and "delete
+  my entire history" are the same kind with different tags. A per-kind allowlist
+  cannot separate them, and a per-event confirmation means approving thousands of
+  prompts — which is not a control either, because the way through it is volume.
+- **Reputation is the wrong instrument.** An application can behave correctly for
+  everyone who reviews it and act only against one chosen person, so no amount of
+  scrutiny of the app population protects a particular user. OVERVIEW.md states this
+  and it is the reason the answer has to be structural.
+- **Prompt fatigue is an attack parameter, not a user failing.** An attacker chooses
+  when to issue the burst, and a dialog that appears a thousand times is approved.
+- **The scope is asserted by the party being scoped.** In a remote-signer connection
+  the app tells the signer what it wants and the signer tells the user; nothing
+  outside that pair checks either claim.
+
+### 11.3 How §6 stops it
+
+- **Kind 5 is on the trusted-only list unconditionally (§6.1b).** A grant index cannot
+  obtain a partial signature for a deletion — not a thousand, not one — and this is a
+  refusal rather than a limit. It is enforced by the co-signers, which the app does not
+  control and cannot compromise by compromising itself, and by §4.3 a grant needs
+  *every* one of them.
+- **Kinds 0, 3 and 10002 are trusted-only unconditionally (§6.1b)**, so the
+  wipe-by-replacement variant — empty profile, empty follow list, relay list pointing
+  nowhere — is closed on the same grounds.
+- **Every replaceable and addressable kind not on the grant's allowlist is
+  trusted-only (§6.1b)**, so overwriting long-form posts and lists is closed too. This
+  is the clause that covers the kinds nobody has thought of yet, which a per-kind
+  denylist cannot.
+- **The reference allowlist is append-only (§6.1a).** Kinds `1`, `6`, `7`, `13`, `16`
+  add events; none destroys one. A grant at the reference policy has no destructive
+  operation available to it at all.
+- **Rate limits per index (§6.1c)** bound whatever a widened allowlist lets through and
+  raise an `ALERT` to every trusted device on the way.
+- **The delay with veto (§6.1e)** covers the case the allowlist cannot: a deletion
+  requested from a *trusted* index with only one trusted device in the signing set is
+  held, every other trusted device is notified, and any may veto. No partial signature
+  exists during the window, so a veto means **no deletion happened**, not that one was
+  reversed.
+- **The freeze (§6.1d)** lets any trusted device stop every co-signing round for the
+  group in one act, once anything looks wrong.
+- All of it rests on **§6.0**: a co-signer that is handed a bare sighash sees no kind
+  and enforces nothing. The kind-5 tag check of NKM §7.6 applies at every index,
+  trusted ones included.
+
+A co-signer holding many delayed requests for one index SHOULD coalesce its notices,
+and MUST NOT let their volume suppress the notice — a flood of ten thousand held
+deletions must still reach the other trusted devices as something a person reads.
+
+### 11.4 Residual
+
+**A compromised trusted device inside the delay window.** This is the residual and it
+is not small.
+
+- An attacker holding one trusted device avoids the second device's approval by
+  signing with a co-signer instead (`D1 + C1` = `k`), which puts the request into
+  §6.1(e)'s window rather than stopping it. **If no other trusted device reads the
+  notice before the delay elapses, the deletion completes.** Where the user has no
+  second trusted device, the window elapses on its own by construction, exactly as NKM
+  §4.2 provides for a recovery with no registered device — the notice has nobody to
+  reach.
+- An attacker holding **two** trusted devices is outside this section entirely.
+  `2T ≥ k` by constraint (4), so it signs with no co-signer in the set, and no policy
+  in §6 runs — the allowlist, the trusted-only list, the rate limits, the delay and the
+  freeze are all enforced by co-signers that are not being asked. This is the price of
+  (4), which exists so that two of the user's own devices can recover with nothing
+  reachable. It cannot be removed without removing the recovery path.
+- A compromised trusted device can also **veto and freeze**, so the same compromise
+  that cannot quietly delete can loudly deny service until it is revoked under §7.1.
+- **Relay behaviour is not a control.** Some relays ignore kind 5, and copies on relays
+  that never received the deletion survive, so a real mass deletion is usually partial.
+  That is luck, not a property of this document, and MUST NOT be described to a user as
+  protection.
+
+What the residual reduces to: **the window, and the number of trusted devices.** A
+user with two trusted devices, both read by a person, has a mass deletion held for a
+day and cancellable in one tap. A user with one has a mass deletion delayed by a day
+and then completed. A client SHOULD say which of those the user is in, on the same
+screen as the lock indicator of NKM §7.16.
+
+## Appendix A — References
+
+[NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md) — storage ladder (§2), the
+`frost-share` profile (§3.3), blob-store backup (§4.2), threshold signing, the
+delta-polynomial reshare (§7.9) and the recovery delay (§7.10).
+[QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md) — payload requirements (§4), profiles
+(§5), consent (§9), the `frost://` light flow (§12.3).
+[SPEC_ISSUES.md](SPEC_ISSUES.md) — the interpretations and gaps this document relies
+on.
+
+RFC 9591 (FROST). BIP-340. NIP-01, NIP-09, NIP-17, NIP-44, NIP-49, NIP-59. WebAuthn
+Level 3 (PRF extension). Apple App Attest. Google Play Integrity.
+
+FROSTR: [bifrost](https://github.com/FROSTR-ORG/bifrost) — `docs/PROTOCOL.md`,
+`docs/CRYPTOGRAPHY.md`, `docs/SECURITY.md`, `docs/GLOSSARY.md`;
+[igloo-core](https://github.com/FROSTR-ORG/igloo-core);
+[igloo-server](https://github.com/FROSTR-ORG/igloo-server) — `docs/PEER_POLICIES.md`,
+`docs/AUTH_MATRIX.md`, `docs/SECURITY.md`;
+[bifrost-rs](https://github.com/FROSTR-ORG/bifrost-rs).
+
+## Status
+
+Version 1.0-draft. Normative. It adds to
+[NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md) and
+[QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md) and changes neither; where it
+disagrees with either on a matter those documents decide, they win.
+
+Three things in it are not yet implementable against any FROSTR release, and all
+three are filed in [SPEC_ISSUES.md](SPEC_ISSUES.md): the reshare that adds an index
+without reconstructing (§5.1), the blinding that keeps the issuing device below `k`
+while it runs (§5.1 step 4), and a signing request that carries the event the
+co-signer is asked to sign (§6.0). Implementation guidance belongs in
+[IMPLEMENTATION.md](IMPLEMENTATION.md) and is deliberately absent here.

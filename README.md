@@ -42,36 +42,44 @@ Keeping the key in a notes file is no better.
 Instead of one secret that does everything, split the power to sign into
 votes.
 
-Signing needs 3 votes.
+Signing needs 4 votes.
 
 ```
- +----------+  +----------+  +----------+  +----------+
- |  your    |  | server A |  | server B |  | app pass |
- |  phone   |  |          |  |          |  |          |
- | 2 votes  |  |  1 vote  |  |  1 vote  |  |  1 vote  |
- +----------+  +----------+  +----------+  | expires  |
-                                           +----------+
+ +----------+  +----------+  +----------+
+ |  your    |  | server A |  | server B |
+ |  phone   |  |          |  |          |
+ | 2 votes  |  |  1 vote  |  |  1 vote  |
+ +----------+  +----------+  +----------+
 
-              signing needs 3 votes
+ +----------+  +----------+
+ | server C |  | app pass |
+ |          |  |          |
+ |  1 vote  |  |  1 vote  |
+ +----------+  | expires  |
+               +----------+
+
+          signing needs 4 votes
 ```
 
 Your phone has 2 votes.
 
-Each server has 1 vote. The two servers are run separately, and neither
-is run by the app.
+Each server has 1 vote. The three servers are run separately, and none
+of them is run by the app.
 
-A temporary app pass has 1 vote, and it expires.
+A temporary app pass has 1 vote, and it expires. You can have one pass
+at a time.
 
 Any device of yours that runs a native app can hold 2 votes, the same as
-your phone. A browser tab never can. A browser gets a pass.
+your phone. A browser tab never can.
 
-These combinations reach 3, so they can sign:
+These combinations reach 4, so they can sign:
 
 ```
  SIGNS
- phone + server A              2 + 1     = 3
- phone + server B              2 + 1     = 3
- phone + pass                  2 + 1     = 3
+ phone + server A + server B   2 + 1 + 1 = 4
+ phone + server A + server C   2 + 1 + 1 = 4
+ phone + server B + server C   2 + 1 + 1 = 4
+ phone + pass + any server     2 + 1 + 1 = 4
  phone + your other phone      2 + 2     = 4
 ```
 
@@ -80,15 +88,19 @@ These do not:
 ```
  DOES NOT SIGN
  phone alone                   2
- server A + server B           1 + 1     = 2
- pass + pass                   1 + 1     = 2
- pass + one server             1 + 1     = 2
+ phone + one server            2 + 1     = 3
+ phone + pass                  2 + 1     = 3
+ all three servers             1 + 1 + 1 = 3
+ pass + two servers            1 + 1 + 1 = 3
 ```
 
-Your phone alone cannot sign. It always needs one more vote. Normally
-that vote comes from a server, and a server can say no.
+Your phone alone cannot sign. It always needs two more votes. Normally
+they come from servers, and a server can say no.
 
-No server, and no pair of servers, can sign without someone else.
+Your phone cannot get around that by making itself a pass. Phone plus
+pass is 3, still one short, and the servers refuse a second pass.
+
+No server, and no set of servers, can sign without someone else.
 
 Two of your own devices can sign with no server at all. That is how you
 keep your account when every server is gone. It also means the servers'
@@ -101,14 +113,12 @@ is that nothing signs when the servers are unreachable.
 
 ### When votes collude
 
-Some sets reach 3 with no phone in them. Here they are, labelled
-honestly.
+One set reaches 4 with no phone in it. Here it is, labelled honestly.
 
 ```
- NO PHONE, STILL REACHES 3
- pass + server A + server B    1 + 1 + 1 = 3
- pass + pass     + server A    1 + 1 + 1 = 3
- pass + pass     + server B    1 + 1 + 1 = 3
+ NO PHONE, STILL REACHES 4
+ pass + server A + server B + server C
+                               1 + 1 + 1 + 1 = 4
 
    honest servers:  sign only what the rules allow
    servers that
@@ -116,22 +126,22 @@ honestly.
                     can rebuild your whole key
 ```
 
-The first line is how an app posts for you while your phone is in your
-pocket. Honest servers check every request, so the app can only do what
-the rules allow.
+That line is how an app with a pass posts for you while your phone is in
+your pocket. Honest servers check every request, so the app can only do
+what the rules allow.
 
-If the servers stop following the rules on purpose, these sets can sign
-anything. They can even rebuild your whole key. The maths does not
+If all three servers stop following the rules on purpose, that set can
+sign anything. It can even rebuild your whole key. The maths does not
 prevent it.
 
-What bounds them: a pass expires and is dropped at the next key refresh,
-and every server in the set has to deliberately stop refusing dangerous
-actions.
+What bounds it: a pass expires and is dropped at the next key refresh,
+and every one of the three servers has to deliberately stop refusing
+dangerous actions.
 
 A key refresh re-cuts every vote, so old copies stop counting. Every
 change to who holds votes is one.
 
-Keep only one pass at a time, and the last two lines disappear.
+Use no pass at all, and even that line disappears.
 
 Now that the idea is in place, here are the words the specifications use.
 Splitting signing power into votes is *threshold signing*. A vote is a
@@ -140,6 +150,54 @@ pass is a *grant*. The layout above is the *reference configuration* of
 [TIERS.md](TIERS.md) §4.4.
 
 ## 3. Logging in
+
+```
+    app on your laptop            your phone
+   +-----------------+         +--------------+
+   |                 |         |              |
+   |    [QR code]    |<--scan--|   camera     |
+   |                 |         |              |
+   +-----------------+         | "Let this    |
+                               |  app post?"  |
+                               |              |
+                               | [ Approve ]  |
+                               +--------------+
+```
+
+An app shows a QR code. Your phone scans it and asks you once. You
+approve.
+
+By default that is all. The app gets no votes. It sends each post to
+your phone, your phone checks it against what you allowed, and then your
+phone signs with the servers as it does for itself.
+
+```
+   +---------+
+   |   app   |  0 votes
+   +---------+
+        |  "post this"
+        v
+   +---------+
+   |  phone  |  2 votes,
+   +---------+  checks it
+        |
+        v
+   +-------------+
+   | two servers |  1 vote each,
+   +-------------+  check it too
+
+        2 + 1 + 1 = 4   -->   posted
+```
+
+This is called a *session*. Nothing is handed to the app, so there is
+nothing for it to keep. You end it on your phone, and it ends at once.
+
+Its one cost: your phone has to be on and reachable for the app to post.
+
+### A pass, for posting while your phone is off
+
+When an app has to post with your phone switched off, you give it a pass
+instead.
 
 ```
     app on your laptop            your phone
@@ -158,47 +216,39 @@ pass is a *grant*. The layout above is the *reference configuration* of
                  ends when you say
 ```
 
-An app shows a QR code. Your phone scans it.
-
-The app shows a 5-digit code. You type it into your phone. That proves
-your phone is talking to the screen in front of you, not to someone in
-between.
-
-Your phone asks you once. You approve.
+The app shows a 5-digit code as well. You type it into your phone. A
+vote is actually being handed over, so this proves your phone is talking
+to the screen in front of you, not to someone in between.
 
 The app receives a pass. It is worth 1 vote, and it ends at a time you
-set.
+set. It is ready at once.
 
 ```
-   later, phone in your pocket
+   later, phone switched off
 
    +--------+                +----------+
    |  app   |--"post this"-->| server A |  checks
-   | 1 vote |                | 1 vote   |  the rules
-   +--------+                +----------+
-       |
-       |                     +----------+
-       +------"post this"--->| server B |  checks
+   | 1 vote |       |        | 1 vote   |  the rules
+   +--------+       |        +----------+
+                    |        +----------+
+                    +------->| server B |  checks
+                    |        | 1 vote   |  the rules
+                    |        +----------+
+                    |        +----------+
+                    +------->| server C |  checks
                              | 1 vote   |  the rules
                              +----------+
 
-        1 + 1 + 1 = 3   -->   posted
+        1 + 1 + 1 + 1 = 4   -->   posted
 ```
 
-From then on, the app posts on its own. Your phone can stay in your
-pocket.
+From then on, the app posts on its own.
 
-Each post needs the pass plus both servers. Each server reads the post
-and checks it against the rules before adding its vote.
+Each post needs the pass plus all three servers. Each server reads the
+post and checks it against the rules before adding its vote.
 
-Two costs, stated up front.
-
-If either server is down, the app cannot post until your phone is back in
-the set.
-
-Making a pass is a key refresh, and refreshes wait. If you have a second
-device, approving there too makes the pass ready at once. With only one
-device, the pass is ready after the waiting period, a day by default.
+The cost, stated up front: if any server is down, the app cannot post
+until your phone is back in the set.
 
 ## 4. The rules
 
@@ -250,10 +300,26 @@ Any device of yours can freeze the servers. They then refuse everything
 until a device of yours lifts it. A freeze does not stop two of your own
 devices signing together, and the app says so.
 
-Your phone is not exempt. If your phone asks a server to sign any of the
-four things above, the server waits a day first and tells your other
-devices. Any of them can cancel. Nothing is signed during the wait, so a
-cancel means it never happened.
+Your phone is not exempt, and neither is an app in a session with it.
+For those four things, the servers look at what a change actually does:
+
+```
+ GOES THROUGH                     WAITS A DAY
+ following someone                removing many follows at once
+ unfollowing a few                removing a relay
+ adding a relay                   changing your name and
+ changing your name, or             your picture together
+   your picture, alone            deleting many posts
+   (your devices are told)
+ deleting a few posts
+```
+
+Removing many follows at once waits a day; following someone doesn't.
+Small removals add up over the day, so doing it five at a time waits too.
+
+While a change waits, the server tells your other devices. Any of them
+can cancel. Nothing is signed during the wait, so a cancel means it never
+happened. A pass never gets any of the four, waiting or not.
 
 ## 5. Losing your phone
 
@@ -263,7 +329,7 @@ store, behind its screen lock. Whoever finds it has to unlock it first.
 If you have another device, it can tell the servers to stop answering the
 lost phone right away.
 
-Then there are two ways back.
+Then there are three ways back.
 
 ### The backup path
 
@@ -298,13 +364,49 @@ Only your recovery code can find and open it. A passkey can stand in for
 the paper code.
 
 A new phone plus that code gets the 2 votes back. Then it refreshes the
-key, so the copy on the lost phone stops counting.
+key, so the copy on the lost phone stops counting. Dropping a phone waits
+a day, and the lost phone could cancel it only if someone has unlocked
+it.
 
 Treat the paper like the phone. Whoever holds the code holds your phone's
 votes.
 
 The backup must be current. Every refresh republishes it, and a refresh
 is not finished until the new backup has been checked.
+
+### The recovery-phrase path
+
+At setup, one more vote is sealed under a recovery phrase (or a passkey)
+and stored where your servers or relays can hand it back. Nobody holds it
+while it is sealed.
+
+Opened, it is worth 1 vote and does exactly one thing: together with all
+three servers, it replaces your devices.
+
+```
+   new phone + recovery phrase
+      |
+      |  opens the sealed vote
+      v
+   1 + 1 + 1 + 1 = 4 with all three servers
+      |
+      |  a day's wait; your old devices
+      |  are told but cannot cancel
+      v
+   new phone holds 2 votes, old ones dropped
+```
+
+Your old devices cannot cancel this, because the point is to work when
+they are the problem. Someone holding both a device of yours and the
+phrase can overrule it, and so can you, if you still have both.
+
+Treat the phrase as your whole account. Together with any one device of
+yours, it is as good as the key.
+
+Setup does not finish until you have at least one of the two: the sealed
+backup of your phone's votes, or the recovery phrase. With neither, losing
+your only phone would lose the account for good, which is worse than a
+pasted nsec.
 
 ### The waiting-period path
 
@@ -431,14 +533,18 @@ live in the same place.
 Here, no app and no server ever holds enough votes to sign alone. The
 rules run on servers the app does not control.
 
+A session looks like NIP-46 from the app's side: it asks your phone to
+sign. The difference is that your phone holds 2 of the 4 votes, not the
+whole key, so its signatures still go past the servers' rules.
+
 NIP-46 also does not say how a key reaches a device, how it is stored,
 whether it is backed up, or what happens when the device is lost. This
 project covers those too.
 
 The honest cost: NIP-46 has no collusion case, because one party holds
-everything. Splitting votes this way creates the collusion sets of
+everything. Splitting votes this way creates the collusion set of
 section 2.
-[TIERS.md](TIERS.md) §4.5 and §7.3 price them rather than hide them.
+[TIERS.md](TIERS.md) §4.5 and §7.3 price it rather than hide it.
 
 ## What else is in here
 
@@ -449,8 +555,9 @@ nothing stops you logging in.
 Where a sensible default can be picked without giving something up, it is
 picked for you.
 
-Backup is offered once, at the end of setup. Skip it and the app never
-nags.
+Backing up your whole key is offered once, at the end of setup. Skip it
+and the app never nags. Turning on votes is different: it needs one of
+the ways back in section 5 first.
 
 These live in [NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md). It also
 registers the two things QRST carries for Nostr: `nostr-nsec`, a whole

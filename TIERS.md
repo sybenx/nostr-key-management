@@ -696,3 +696,84 @@ Two things narrow it, and neither closes it:
 - Co-signers MUST discard every grant record on entering the new epoch (§5.3).
 
 ---
+
+## 8. Backup
+
+### 8.1 What is backed up
+
+A backup under this section holds **one trusted device's indices** — all `T` of them,
+for one epoch. It restores a trusted device and nothing else. It does not hold the
+nsec, does not hold any co-signer's share, and does not hold any grant.
+
+The container MUST be encrypted under one of exactly two factors:
+
+- **A passkey-PRF-derived key.** `prf = PRF(credential, SALT_B)` as NKM §4.2 defines
+  it, with the wrapping key derived from `prf` by HKDF-SHA256. The credential is
+  origin-bound by the platform, so no other origin can produce the value.
+- **A paper secret.** A client-generated phrase of at least 96 bits of entropy,
+  displayed once for the user to write down. NKM §4.2's rule applies unchanged: the
+  phrase MUST be generated, MUST NOT be replaceable with free text, and the screen
+  MUST say that it is the only thing protecting what it wraps.
+
+A user-chosen password MUST NOT be offered as a factor for a share backup. NKM §4.2
+permits one for the nsec blob because a server-side delay and a second factor sit
+behind it; there is no server in this path and no delay to hide behind.
+
+Where the factor is a paper secret the container is NKM §3.3's `frostshare` container
+unchanged — scrypt at `log_n = 18`, XChaCha20-Poly1305, bech32 with HRP `frostshare`
+— one container per index. Where the factor is a passkey PRF the same container
+layout is used with the scrypt step replaced by HKDF-SHA256 over `prf`, and the
+`log_n` byte set to `0x00` to mark it.
+
+### 8.2 Where it is stored
+
+Each container is NIP-59 gift-wrapped to a **burner** key and published to relays.
+
+- The burner keypair MUST be derived deterministically from the backup factor, so that
+  the factor alone both locates and opens the backup and there is no second secret to
+  keep.
+- The wrap MUST NOT carry an `expiration` tag, and the client MUST republish to at
+  least three relays and MUST verify retrievability from at least two before reporting
+  the backup complete.
+- A relay sees an anonymous wrap addressed to a key it has never seen, carrying
+  ciphertext: not the identity it belongs to, not who published it, not that it is a
+  backup. This is QRST's transport property and is inherited, not re-argued.
+
+**A backup goes stale at every rotation, including every grant issue.** A rotation
+moves every member to a new polynomial (§7.4), so a container holding an old epoch's
+indices restores a device whose shares no longer pair with anything. The client MUST
+republish the backup for the new epoch as part of the rotation, and **a rotation MUST
+NOT be finalised until the new backup has been published and verified**. A client that
+cannot republish MUST show the backup as stale and MUST NOT report the group as
+recoverable.
+
+### 8.3 A stored share is not a co-signer
+
+This is normative and is the point of the section.
+
+- **Nothing stored on a relay ever produces a partial signature.** A backup container
+  is ciphertext at rest. It does not hold a nonce pool, does not receive a
+  `/sign/req`, cannot refuse one, and cannot enforce a single rule of §6.
+- **A backup MUST NOT be counted in `N`, MUST NOT be counted toward `n_s`, and MUST NOT
+  be given an index of its own.** It is a copy of indices that already exist and are
+  already counted. A client that counts it is double-counting a trusted device and
+  every inequality in §4 is then wrong.
+- **A relay is a co-signer only when it runs signer code.** An operator MAY run both a
+  relay and a co-signer; that operator is then one party holding one co-signer index,
+  and the relay half of it holds nothing. Storing a backup on a relay operated by a
+  co-signer MUST be refused by the client: that operator would hold one index and the
+  ciphertext of `T` more, which is the same concentration NKM §7.12 warns of for the
+  blob and share 1 on one host.
+- **A backup is worth a trusted device to whoever opens it.** By §4.3, `T = k − 1` at
+  the reference configuration, so the factor plus one co-signer is the key. The factor
+  MUST be treated by the client as material of the same sensitivity as a trusted
+  device's storage, and the screen that presents it MUST say so rather than describing
+  it as "a backup".
+
+Where an NKM §4.2 blob-store backup of the **nsec** also exists — NKM §7.5 records
+that it survives activation by design — it holds the whole key and outranks every
+inequality in §4. That is NKM's decision and this document does not disturb it, but a
+client MUST list it on the same screen as this section's backup and MUST NOT present
+the two as equivalent.
+
+---

@@ -1462,11 +1462,117 @@ the QRST question filed in SPEC_ISSUES.md.
 Version 1.0-draft. Normative. It adds to
 [NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md) and
 [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md) and changes neither; where it
-disagrees with either on a matter those documents decide, they win.
+disagrees with either on a matter those documents decide, they win. Implementation
+guidance belongs in [IMPLEMENTATION.md](IMPLEMENTATION.md) and is deliberately absent
+here.
 
-Three things in it are not yet implementable against any FROSTR release, and all
-three are filed in [SPEC_ISSUES.md](SPEC_ISSUES.md): the reshare that adds an index
-without reconstructing (§5.1), the blinding that keeps the issuing device below `k`
-while it runs (§5.1 step 4), and a signing request that carries the event the
-co-signer is asked to sign (§6.0). Implementation guidance belongs in
-[IMPLEMENTATION.md](IMPLEMENTATION.md) and is deliberately absent here.
+Three things this document needs are not available at the FROSTR layer today. **Two of
+the three already exist in the ciphersuite NKM §7.4 names** — `frost-core` ships both,
+and `bifrost-rs` already depends on the crate that carries them — so what is missing is
+a peer operation that exposes them, not a primitive. Each is stated below as a proposal
+ready to paste upstream, with the paragraph in normative language and a verdict on
+whether it is additive to bifrost's envelope. All three are filed in
+[SPEC_ISSUES.md](SPEC_ISSUES.md).
+
+**What "additive to bifrost's envelope" means here.** A bifrost message is
+`{tag, data, env}`, encrypted and wrapped in a Nostr event (`docs/PROTOCOL.md`). The
+handler dispatches on `msg.method` through a `switch` with **no `default` arm**
+(`src/class/client.ts:174`–`205`), so an unrecognised tag is ignored rather than
+erroring, and the requester sees the timeout bifrost already uses for every rejection.
+A proposal is additive if it introduces tags and changes no existing schema and no
+envelope field, and therefore degrades on an un-upgraded peer to "does not answer".
+
+### Proposal 1 — expose the delta-polynomial reshare
+
+> Bifrost SHOULD expose share refreshing as a peer operation. A refresh moves a group
+> to a new polynomial without reconstructing the group secret:
+> `frost_core::keys::refresh::compute_refreshing_shares` builds a Shamir sharing of
+> **zero** with `threshold − 1` fresh coefficients, and `refresh_share` adds each
+> member's evaluation of it to that member's existing share. Two tags carry it:
+> `/refresh/req`, from the initiating peer to each member, carrying that member's
+> refreshing share and the refreshed group package; and `/refresh/res`, the member's
+> acknowledgement, sent only after it has verified its refreshed share against the
+> refreshed verifying shares. A member MUST retain its previous-epoch share until it has
+> verified the new one. Passing a subset of the current identifiers removes the omitted
+> members, which is how a peer is revoked without re-dealing. The threshold MUST NOT
+> change and a member MUST NOT be added by a refresh — those are Proposal 2 and a
+> re-deal respectively. `rotate_keyset_dealer` MUST NOT be used for this: it calls
+> `recover_key` and re-splits, assembling the group secret on one machine.
+>
+> **Three consequences follow from bifrost's own key schedule and SHOULD be handled by
+> the same operation.** A member's transport identity is the public key of its share
+> secret (`src/class/signer.ts:79`), so a refresh **changes every peer's pubkey**;
+> relay subscriptions and peer lists MUST be rebuilt from the refreshed group package.
+> The group id is `SHA256(group_pk || threshold || sorted member pubkeys)`
+> (`src/lib/group.ts`), so the `gid` changes with it and in-flight sessions MUST be
+> abandoned rather than carried across. And secret nonces are derived as
+> `HMAC-SHA256(share_secret, code || domain)` (`docs/PROTOCOL.md`), so **every
+> outstanding nonce in every pool, incoming and outgoing, is invalidated**; pools MUST
+> be cleared on both sides and replenished by the ordinary ping path before signing
+> resumes.
+
+**Additive?** Yes. Two new tags, no change to any existing schema or to the envelope.
+The group package's contents are replaced rather than extended. An un-upgraded peer
+ignores `/refresh/req` and does not acknowledge, which the initiator reads as a member
+that cannot be refreshed — the correct outcome, since that member would otherwise be
+left on a dead polynomial.
+
+### Proposal 2 — expose the repairable threshold scheme
+
+> Bifrost SHOULD expose the repairable threshold scheme of
+> `frost_core::keys::repairable` as a peer operation, for both of its uses: restoring a
+> member's lost share, and **issuing a share at an identifier the group does not yet
+> hold**, which is the same computation at a different evaluation point. Three tags
+> carry it: `/repair/req`, from the initiator to each helper, naming the target
+> identifier and the helper set; `/repair/delta`, helper to helper, carrying the `Delta`
+> values of part 1; and `/repair/sigma`, helper to target, carrying the `Sigma` of part
+> 2. The helper set MUST contain at least `threshold` identifiers and **MUST NOT contain
+> the target identifier** — the Lagrange coefficients are taken over the helper set
+> evaluated at the target, and a target inside the set drives one of them to zero. The
+> API does not check this. No helper learns another helper's share, because each helper
+> retains one additive part of its own contribution; the target learns only its own
+> share. **Implementations MUST NOT sum the contributions on a helper**:
+> `repair_share_part3` runs on the target, and a helper that receives the other `Sigma`
+> values holds `threshold` shares' worth of material and is the group secret.
+>
+> One structural note. When the target is an existing member repairing a lost share,
+> `/repair/sigma` routes natively. When the target is **new**, it is not yet in the
+> group package, so it is not in any helper's peer list (`init_peer_data`,
+> `src/class/client.ts:467`) and cannot send or receive under the authorisation filter
+> (`_filter`, `:213`). Either the peer model needs a provisional-peer state for a target
+> mid-repair, or `/repair/sigma` needs an out-of-band carrier for that case. This
+> document uses the second: the `Sigma` values reach a new index over QRST and gift
+> wraps (TIERS.md Appendix B).
+
+**Additive?** Yes for the envelope — three new tags, no existing schema changed. Not
+additive for the peer model in the new-target case, which is the note above and the
+reason the out-of-band carrier exists.
+
+### Proposal 3 — an event-carrying sign request
+
+> Bifrost SHOULD define an `/event` tag carrying the full unsigned Nostr event that a
+> subsequent `/sign/req` will reference. `/event/req` carries one or more unsigned
+> events `{pubkey, kind, created_at, tags, content}`. The receiving peer **computes each
+> event id itself** by NIP-01 serialisation and MUST NOT accept a requester-supplied id;
+> it applies whatever policy it is configured with and answers `/event/res` with a
+> per-event verdict and, on refusal, a reason. A peer that accepts an event caches it
+> keyed by **(event id, requesting member index)** for a short, bounded, evictable TTL;
+> keyed by id alone, one member rides another member's accepted event. A peer
+> configured to require events MUST refuse a `/sign/req` any of whose sighashes does not
+> match a live accepted entry **for the index that sent that request**, and MUST refuse
+> any sighash vector carrying tweaks, since a tweak alters what is signed and was not
+> what the policy inspected.
+>
+> The reason this is needed rather than convenient: `/sign/req` carries `hashes` and
+> `nonces` and no event (`docs/PROTOCOL.md`; `src/schema/sign.ts`), and the signing
+> handler looks up its nonce, re-derives the secret and signs the hash it was given
+> (`src/api/sign.ts:87`–`109`). A deployment that believes it filters by event kind is
+> filtering nothing. The `content` field of a session is unvalidated free text folded
+> into the session id (`src/lib/session.ts:131`–`135`) and MUST NOT be used to carry
+> the event, because nothing checks it.
+
+**Additive?** Yes, entirely. Two new tags; `/sign/req`'s schema is unchanged and the
+requirement is a handler precondition on the peer that chooses to enforce it. The
+existing peer policy type gains one optional field. An un-upgraded requester that never
+sends `/event/req` simply cannot obtain a signature from a peer that requires it, which
+is the intended failure.

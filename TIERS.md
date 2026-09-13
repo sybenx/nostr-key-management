@@ -861,3 +861,33 @@ MUST NOT raise a limit, widen an allowlist, or shorten the delay of §6.1(e) on 
 strength of an attestation.
 
 ---
+
+## 10. Threat model
+
+In the format of `bifrost/docs/SECURITY.md`: a threat per row, what happens under
+each arrangement per column. **Raw nsec pasted** is a key copy-pasted into an
+application. **NIP-46 to a signer app** is a remote signer holding the whole key and
+granting scoped sessions. **This document** is the weighted group of §3 at the
+reference configuration of §4.4. One line per cell; the sections that qualify each
+line are cited beside it.
+
+| Threat | Raw nsec pasted | NIP-46 to a signer app | This document |
+|---|---|---|---|
+| Malicious web app | Holds the key permanently; there is nothing to revoke and no way to learn it happened. | Cannot take the key, but signs whatever the signer's policy permits, for as long as the session stands. | Holds one weight-1 grant that reaches `k` only with every co-signer or a trusted device, signs no destructive kind (§6.1b), expires, and is dropped at the next rotation (§3.3). |
+| Compromised trusted device | Is the key, totally and permanently. | Is the key if that device runs the signer; otherwise one revocable session. | Holds `T = k − 1`: one unit short, delayed and vetoable on trusted-only kinds (§6.1e), cut off immediately by §7.1 and rotated out by §7.2. |
+| Compromised co-signer(s) | No such party exists. | The signer is the only party, so compromising it is compromising the key. | One index each and `n_s < k`, so they neither sign nor rotate alone — but with the live grants they reach `k` (§4.5 sets 10–13), which §7.3 states as accepted. |
+| Malicious grant holder | No analogue; the application was given the key. | Its session signs whatever the signer allows, for as long as the user leaves it connected. | Weight 1, allowlisted kinds only, needs every co-signer or a trusted device, and ends at its expiry or the next rotation, whichever comes first (§5.2). |
+| Grant holder colluding with co-signers | No analogue. | No analogue: one party holds everything, so there is nobody to collude with. | Reaches `k` and is therefore the key (§4.5 sets 10–13); the live-grant budget of constraint (2) is the only bound, and §7.3 refuses to hide it. |
+| Malicious signer app | Has the key the moment it is pasted in. | Holds the whole key by design; its scoping is its own code and it may ignore it. | Holds at most a grant, or `T` if the user made it a trusted device; the policy that binds it runs on parties it does not control (§6). |
+| Phishing of a consent screen | Yields the key; the screen is the only control and the attacker wrote it. | Yields a connection the user believes is scoped, where the scope is asserted by the page requesting it. | Yields at most one grant at its allowlist — except a fake backup-factor screen, which yields a trusted device's weight (§8.3) and is the residual. |
+| Device loss | Is the key, behind whatever the device's storage offered; no revocation exists. | Is one revocable session, or the key if the lost device ran the signer. | Weight `T` at NKM §2.1 level 3, inert until a second party is taken; refusal is immediate (§7.1) and rotation removes it (§7.2). |
+
+**The two rows that are not improvements.** "Grant holder colluding with co-signers"
+has no analogue in the other two columns because they have no such parties, so the
+comparison flatters nothing: this document introduces the collusion set along with the
+tiers, and §4.5 and §7.3 are where it is priced. "Phishing of a consent screen" is
+better here only for grants; the backup factor of §8 is a phishable secret worth a
+trusted device, and NKM §7.13's argument for why a generated phrase resists phishing
+is the whole of the answer.
+
+---

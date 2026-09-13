@@ -213,6 +213,32 @@ signer, a device the user does not fully control.
 | Co-signer | 1 | A server running signer code and enforcing §6 | No | No | No | No |
 | Grant | 1 | An untrusted app or device | No | No | Yes, at a time set on issue | Yes, always |
 
+### 3.5 Two profiles, and which one the user is in
+
+Constraint (4) of §4.2 — `2T ≥ k`, two trusted devices sign with no co-signer — is a
+**per-user option, on by default**. It is the difference between a key that still works
+when nothing is reachable and a key every signature of which is seen by a party that
+enforces §6. Both are defensible; neither is right for everyone.
+
+| | **Profile A — recovery-first (default)** | **Profile B — policy-first** |
+|---|---|---|
+| Constraint (4) | On: `2T ≥ k` | Off, and inverted: `2T < k` |
+| Two of the user's own devices, nothing else reachable | Sign | Cannot sign |
+| Signatures no co-signer sees | Possible | None, where §4.6's condition holds |
+| §11.4's two-device residual | Present | Removed |
+
+The choice MUST be presented at activation, MUST default to A, and MUST state the
+trade in the terms above rather than as a security level.
+
+**It is fixed at activation and changed only by Re-split.** The two profiles use
+different `k`, and `k` cannot be changed by a rotation: `frost-core`'s `refresh_share`
+refuses a refreshing share whose `min_signers` differs from the current package
+(`frost-core/src/keys/refresh.rs:151`–`153`), and `frost-core` 2.2.0 added that
+validation as a **security fix**, recording that refreshing to a smaller threshold does
+not lower it and can cost the participants' shares (`frost-core/CHANGELOG.md`, 2.2.0).
+Moving between profiles is therefore a re-deal — NKM §7.5a's Re-split, which
+reconstructs — and a client MUST present it as such rather than as a setting.
+
 ---
 
 ## 4. Constraints
@@ -230,13 +256,14 @@ signer, a device the user does not fully control.
 
 ### 4.2 The inequalities
 
-A configuration MUST satisfy all four:
+A configuration MUST satisfy (1), (2) and (3). (4) is **OPTIONAL and on by default**;
+§3.5 gives the choice and §4.6 the configuration that declines it.
 
 ```
 (1)  n_s < k                    co-signers alone never sign
 (2)  W_g < k                    grants alone never sign
 (3)  T + n_s − s ≥ k            one trusted device signs, losing up to s co-signers
-(4)  2T ≥ k                     two trusted devices recover with no co-signers
+(4)  2T ≥ k                     two trusted devices recover with no co-signers   [optional]
 ```
 
 (1) is what makes a co-signer a co-signer rather than a custodian, and it does
@@ -253,8 +280,10 @@ outstanding.
 **`T < k` MUST hold.** It is not one of the four, but the four are chosen on the
 assumption of it and the document is incoherent without it: at `T ≥ k` a trusted
 device signs alone, no co-signer is ever in the signing set, and every rule in §6 is
-unenforceable because nothing routes through a party that could enforce it. With (4)
-this bounds `T` narrowly: `⌈k/2⌉ ≤ T ≤ k − 1`. At `k = 3` the only value is `T = 2`.
+unenforceable because nothing routes through a party that could enforce it. Under
+Profile A, (4) bounds `T` narrowly from the other side too: `⌈k/2⌉ ≤ T ≤ k − 1`, and at
+`k = 3` the only value is `T = 2`. Under Profile B the lower bound is inverted —
+`2 ≤ T < k/2`, the lower limit being §3.1's `T > 1`.
 
 **The slack is `s ≤ T + n_s − k`.** Rearranging (3). A configuration that wants a
 trusted device to survive one co-signer being down needs `T + n_s ≥ k + 1`.
@@ -284,7 +313,7 @@ compromised co-signer completes it. A client MAY offer grant weights above 1 onl
 where `w < T` and `n_g·w < k` both hold, MUST default to `w = 1`, and MUST NOT offer
 any weight at which a single co-signer plus one grant reaches `k`.
 
-### 4.4 Reference configuration
+### 4.4 Reference configuration (Profile A)
 
 ```
 k    = 3
@@ -357,6 +386,83 @@ can say. What sets 10 to 13 cost an attacker is the honest measure of the design
   slack, and the single co-signer is a single point of unavailability. This is the
   trade the configuration makes, and a client SHOULD present it as a choice rather
   than picking silently.
+
+### 4.6 Profile B — declining constraint (4)
+
+A user who would rather every signature be seen by a party that enforces §6 than keep a
+key that works with nothing reachable declines (4). The configuration then requires
+`2T < k`, and the reference is:
+
+```
+k    = 5
+T    = 2          two indices per trusted device
+n_s  = 4          four co-signers, one index each
+W_g  ≤ 4          grants total weight under 5
+s    = 1          a trusted device survives one co-signer being down
+```
+
+Checks: `n_s = 4 < 5` ✓ — `W_g ≤ 4 < 5` ✓ — `T + n_s − s = 2 + 4 − 1 = 5 ≥ 5` ✓ —
+`T = 2 < 5` ✓ — `2T = 4 < 5`, so two trusted devices alone do **not** reach `k`.
+
+**The benefit, stated exactly.** What Profile B removes is the set of signatures no
+co-signer sees. The full property is stronger than "(4) is off", and it has its own
+condition:
+
+```
+(5)  D·T + W_g < k               every signing set contains a co-signer
+```
+
+where `D` is the number of trusted devices. (5) is what makes §6 unconditional: every
+signature, from every party, in every combination, passes through a co-signer, so the
+kinds allowlist, the trusted-only list, the rate limits, the delay with veto and the
+freeze apply to everything the identity ever signs.
+
+**(5) is not free at the reference numbers, and this is the part that is easy to get
+wrong.** At `k = 5, T = 2`:
+
+| Trusted devices `D` | Live grants `W_g` for (5) to hold |
+|---|---|
+| 1 | up to 2 |
+| 2 | 0 |
+| 3 or more | (5) cannot hold |
+
+So the reference Profile B removes "two trusted devices sign alone" at any grant
+budget, but reaches the full (5) with two trusted devices only when no grant is live. To
+hold (5) with two trusted devices and two live grants, `D·T + W_g = 6`, so `k ≥ 7`:
+`k = 7, T = 2, n_s = 6, W_g ≤ 2`, which satisfies (1), (2), (3) at `s = 1` and (5) at
+`D ≤ 2`.
+
+**A client implementing Profile B MUST re-check (5) on every rotation that adds a
+trusted device or issues a grant, and MUST refuse the operation that would break it.**
+(5) is a property of the current membership, not of the parameters, so a configuration
+that satisfied it at activation stops satisfying it the moment a third device is
+admitted.
+
+**The costs, in order of how much they will hurt.**
+
+1. **The offline path is gone.** Two trusted devices with nothing reachable cannot sign.
+   The user's identity is unusable unless `k − T` co-signers are reachable — three of
+   four at `k = 5`, five of six at `k = 7`. §8's backup restores a trusted device that
+   still cannot sign alone, and §7.18 of NKM — the serverless quorum — is the opposite
+   choice from this one. This is the whole of what (4) was buying.
+2. **Two to three times the co-signers**, since (3) needs `n_s ≥ k − T + s`. Each is
+   another independently administered service to find, trust and keep reachable, and
+   another place an index can be stolen from.
+3. **Availability gets worse, not better.** The slack `s` is still 1: a single trusted
+   device tolerates exactly one co-signer outage at `k = 5` as at `k = 3`. But it now
+   depends on three of four rather than one of two, so the probability that enough are
+   down rises with `n_s` while the tolerance does not.
+4. **Collusion does not go away; it gets more expensive.** At `k = 5, n_s = 4, W_g = 2`,
+   all four co-signers plus one grant total 5 and sign with no trusted device — §4.5's
+   sets 10 and 11 in a larger shape. Four independently administered servers must defect
+   instead of two. Harder, not impossible, and §7.3's statement is unchanged.
+5. **The choice is not reversible in place.** §3.5: `k` differs between profiles and a
+   rotation cannot change `k`, so switching is a Re-split.
+
+**What Profile B does not change.** Constraint (3) still gives a single trusted device a
+working path, §6.1(e)'s delay still fires on a trusted-only kind from a single trusted
+device, and §7's rotation authority is untouched. The first bullet of §11.4's residual
+survives both profiles.
 
 ---
 
@@ -707,11 +813,14 @@ be liftable by a grant or by another co-signer, and SHOULD require a different
 trusted device than the one that froze. A freeze MUST take effect within one round:
 a co-signer that has begun a round MUST NOT complete it after receiving a freeze.
 
-**A freeze does not stop two trusted devices.** By (4), `2T ≥ k`, so the user's own
-two devices sign with no co-signer in the set and a freeze is invisible to them.
-This is correct — a freeze is a tool against a compromised grant or an unexplained
-signing burst, not against the user — but a client MUST NOT describe a freeze as
-stopping all signing, and the freeze indicator MUST say what it actually covers.
+**Under Profile A, a freeze does not stop two trusted devices.** By (4), `2T ≥ k`, so
+the user's own two devices sign with no co-signer in the set and a freeze is invisible
+to them. This is defensible — a freeze is a tool against a compromised grant or an
+unexplained signing burst, not against the user — but a client MUST NOT describe a
+freeze as stopping all signing, and the freeze indicator MUST say what it actually
+covers. **Under Profile B (§4.6) a freeze stops everything**, because no signing set
+exists without a co-signer in it; the indicator MUST say that instead, and MUST NOT use
+the same wording for both profiles.
 
 **(e) A delay with veto, for trusted-only kinds from a single trusted device.** Where
 a trusted-only kind is requested and the signing set contains exactly one trusted
@@ -1192,13 +1301,19 @@ is not small.
   notice before the delay elapses, the deletion completes.** Where the user has no
   second trusted device, the window elapses on its own by construction, exactly as NKM
   §4.2 provides for a recovery with no registered device — the notice has nobody to
-  reach.
-- An attacker holding **two** trusted devices is outside this section entirely.
-  `2T ≥ k` by constraint (4), so it signs with no co-signer in the set, and no policy
-  in §6 runs — the allowlist, the trusted-only list, the rate limits, the delay and the
-  freeze are all enforced by co-signers that are not being asked. This is the price of
-  (4), which exists so that two of the user's own devices can recover with nothing
-  reachable. It cannot be removed without removing the recovery path.
+  reach, unless the user restores one inside the window (§7.5). **This bullet survives
+  both profiles**; Profile B does not touch it, because a single trusted device plus
+  co-signers is the working path under either.
+- **Under Profile A**, an attacker holding **two** trusted devices is outside this
+  section entirely. `2T ≥ k` by constraint (4), so it signs with no co-signer in the
+  set, and no policy in §6 runs — the allowlist, the trusted-only list, the rate limits,
+  the delay and the freeze are all enforced by co-signers that are not being asked. This
+  is the price of (4), which is on by default so that two of the user's own devices can
+  recover with nothing reachable. **Profile B (§4.6) removes this bullet**, at the cost
+  of the offline path: where `D·T + W_g < k` holds, no signing set exists without a
+  co-signer, so §6 runs on every signature a compromised pair of trusted devices could
+  ever produce. Within Profile A the bullet cannot be removed, only narrowed — a user
+  with a single trusted device has no two-device set for an attacker to take.
 - A compromised trusted device can also **veto and freeze**, so the same compromise
   that cannot quietly delete can loudly deny service until it is revoked under §7.1.
 - **Relay behaviour is not a control.** Some relays ignore kind 5, and copies on relays
@@ -1206,10 +1321,14 @@ is not small.
   That is luck, not a property of this document, and MUST NOT be described to a user as
   protection.
 
-What the residual reduces to: **the window, and the number of trusted devices.** A
-user with two trusted devices, both read by a person, has a mass deletion held for a
-day and cancellable in one tap. A user with one has a mass deletion delayed by a day
-and then completed. A client SHOULD say which of those the user is in, on the same
+What the residual reduces to: **the window, the number of trusted devices, and the
+profile.** A user with two trusted devices, both read by a person, has a mass deletion
+held for a day and cancellable in one tap. A user with one has a mass deletion delayed
+by a day and then completed — unless they restore a second trusted device from the §8
+backup inside the window, which §7.5 makes a full veto, and which works only where the
+backup factor is reachable independently of the compromised device. Under Profile A a
+user whose two trusted devices are both taken has no delay at all; under Profile B that
+case does not exist. A client SHOULD say which of these the user is in, on the same
 screen as the lock indicator of NKM §7.16.
 
 ## Appendix A — References

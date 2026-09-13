@@ -620,6 +620,55 @@ are not equally trusted, a raw Lagrange-weighted contribution reveals the
 contributor's share and the combination MUST be blinded." A worked blinded
 construction is left open and is the thing this entry most wants written.
 
+### §7.6 requires the co-signer to see the event; FROSTR's signing message carries only hashes
+
+**Document:** NOSTR_KEY_MANAGEMENT.md
+**Section:** §7.6 (and §7.13, TIERS.md §6.0)
+**Kind:** suspected error
+
+NKM §7.6 states it twice and builds on it: "A FROST co-signer must see what it
+signs. **Every event a device signs is visible in plaintext to the co-signer**", and
+"the requester sends the **full unsigned event**, not a digest; the co-signer
+serialises and hashes it itself (NIP-01)." The kinds allowlist of §7.6, the kind-5
+tag check, and every per-kind rule in TIERS.md §6 rest on it.
+
+**FROSTR's signing message has no field for the event.** `/sign/req` carries
+`hashes: string[][]` — sighash vectors — with `gid`, `sid`, `members`, `nonces`,
+`type` and `stamp` (`bifrost/docs/PROTOCOL.md`, "Sign Request"; schema at
+`bifrost/src/schema/sign.ts`, `template`/`session`). The only free field is
+`content: string | null`, documented as "Optional metadata", unvalidated, and folded
+into the session-id preimage (`bifrost/src/lib/session.ts:131`–`135`). The signer
+handler never sees an event: it looks up its own nonce by index, re-derives the
+secret, and signs the hash it was given (`bifrost/src/api/sign.ts:87`–`109`). The
+required validations in `PROTOCOL.md` cover `gid`, `sid`, member indices, threshold
+and nonce presence — nothing about what is being signed. A conforming FROSTR peer
+therefore **cannot** implement §7.6's allowlist, and a deployment that believes it
+has one has a policy that never runs.
+
+The HTTP surface is better and still unsound by default. `igloo-server`'s
+`/api/sign` accepts either a full `event`, which it hashes itself exactly as §7.6
+requires, **or** a `message` field holding a bare 32-byte event id, which it signs
+without seeing anything (`igloo-server/src/routes/sign.ts:22`–`27` and `:29`–`75`).
+Both forms are equally available to any authenticated caller, so an app that wants
+to evade a kinds allowlist sends the hash form.
+
+This is not a defect in `bifrost` — a threshold signer that signs hashes is the
+normal design — but it makes §7.6's central claim false as written against the
+protocol NKM's co-signer mode is built on, and it silently disables the mechanism
+NKM §7.13 relies on for its audit surface.
+
+**Proposed fix:** NKM §7.6 should replace "Requests are gift-wrapped between `E.pub`
+and `S.pub` over relays or `<url>/v1/sign` over HTTPS; both MUST be supported, HTTPS
+tried first" with a statement of what the relay form must carry: "The request MUST
+carry the full unsigned event. FROSTR's `/sign/req` has no field for it; a co-signer
+MUST NOT sign a bare sighash, so a client using the relay transport MUST convey the
+event in a field the co-signer validates, and a co-signer that receives a request
+with no event MUST refuse the round rather than sign the hash." §7.6 should further
+require: "Where an HTTP signing endpoint accepts both a full event and a precomputed
+event id, the co-signer MUST refuse the precomputed form for any requester subject
+to a kinds allowlist." TIERS.md §6.0 states the second requirement for grant indices
+already; the first belongs in NKM, because NKM's co-signer mode has the same hole.
+
 ## Resolved
 
 ### A failed probe can leave a browser Holder with no transport at all

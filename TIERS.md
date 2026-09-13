@@ -473,3 +473,135 @@ the raw member list (§2.3). A member list read without them counts a weight-`T`
 trusted device as `T` independent signers.
 
 ---
+
+## 6. Co-signer policy
+
+Policy is what buys the co-signer tier its place. A co-signer's weight is 1 and can
+never complete a signature alone; what it can do is refuse, and §4's inequalities are
+chosen so that every set containing a grant and no trusted device must route through
+every co-signer (§4.3). Policy is therefore normative here, not advisory: a
+co-signer that does not enforce this section is not a co-signer under §3.2.
+
+### 6.0 Precondition — the co-signer MUST see what it signs
+
+**A co-signer MUST refuse any sign request that does not carry the full unsigned
+event.** It serialises and hashes the event itself per NIP-01 and signs only its own
+computed hash. A request carrying a bare 32-byte sighash, or any digest the
+co-signer did not derive, MUST be refused for every grant index without exception,
+and SHOULD be refused for every index.
+
+This is NKM §7.6's rule and it is restated because every other rule in this section
+depends on it: a kinds allowlist over a request that does not contain a kind is not
+a policy, it is a comment. SPEC_ISSUES.md records that FROSTR's native signing
+message carries sighashes only, and that the one HTTP surface which does accept a
+full event also accepts a bare hash.
+
+### 6.1 The five rules
+
+Each rule below is identified by the `policy_id` recorded in the grant record
+(§5.3). A co-signer MUST apply the policy the record names and MUST NOT apply a
+default in its place when the named policy is unknown to it; an unknown `policy_id`
+MUST be refused.
+
+**(a) A kinds allowlist per grant.** Each grant is bound to an enumerated list of
+event kinds. A co-signer MUST refuse any kind not on the allowlist of the grant
+index that requested it. The list is enumerated rather than expressed as a rule,
+because "does not alter the identity" is not evaluable for kinds that do not yet
+exist. The allowlist is fixed at issue and MUST NOT be widened for a live grant;
+widening it is issuing a new grant (§5.2). Reference allowlist: `1`, `6`, `7`, `13`,
+`16` — note, repost, reaction, NIP-17 seal, generic repost. A client MAY offer `30023`
+by explicit opt-in per (b). Where this document governs a group, this list replaces
+NKM §7.6's reference set for grant indices; it is a subset of it.
+
+**(b) A trusted-only list.** A co-signer MUST NOT produce a partial signature for any
+kind on the trusted-only list when the requesting index is a grant, regardless of
+that grant's allowlist. The list MUST contain at least:
+
+| Kind | Why |
+|---|---|
+| `0` | Profile metadata. Replacing it is impersonation with the user's own key. |
+| `3` | Follow list. Replacing it is a silent, total edit of who the user follows. |
+| `5` | Deletion requests. See §11. |
+| `10002` | Relay list. Replacing it can make the user unreachable and route their future events to relays the attacker reads. |
+| Every replaceable kind (`10000`–`19999`) and every addressable kind (`30000`–`39999`) **not** on the requesting grant's allowlist | A replaceable or addressable event overwrites rather than appends: it destroys state instead of adding to it, and there is no per-event revocation for it. |
+
+`0`, `3`, `5` and `10002` are trusted-only unconditionally and MUST NOT appear on any
+grant's allowlist. Every other replaceable or addressable kind is trusted-only by
+default and leaves the list only by being named on the grant's allowlist at issue.
+Kind `5` requires the tag check of NKM §7.6 as well: a deletion referencing any
+kind-30242 coordinate MUST be refused from every index, including a trusted one.
+
+**(c) Rate limits per index.** Limits are counted per share index, never per party,
+per IP, or per connection — a party's several indices are several peers with several
+network identities (§2.3), so any counter not keyed on the index is trivially
+evaded by using another one. A co-signer MUST maintain, for each index in the
+current epoch, a signing-rate counter and MUST refuse rounds beyond the configured
+limit. Reference limits: a grant index, 60 signatures per rolling hour and 600 per
+rolling day; a trusted-device index, no ceiling but the alerting of NKM §7.13. ECDH
+limits are NKM §7.13's and are not restated. Exceeding a limit MUST be reported to
+every trusted device as an NKM §7.17 `ALERT`; raising a limit for a live grant MUST
+require a trusted device and MUST NOT be automatic.
+
+**(d) A freeze.** A co-signer MUST support a freeze: a state, entered on the
+instruction of any trusted device, in which it refuses **all** rounds for the group —
+every kind, every index, trusted indices included — until lifted. Lifting MUST
+require an instruction from a trusted device and MUST NOT expire on its own, MUST NOT
+be liftable by a grant or by another co-signer, and SHOULD require a different
+trusted device than the one that froze. A freeze MUST take effect within one round:
+a co-signer that has begun a round MUST NOT complete it after receiving a freeze.
+
+**A freeze does not stop two trusted devices.** By (4), `2T ≥ k`, so the user's own
+two devices sign with no co-signer in the set and a freeze is invisible to them.
+This is correct — a freeze is a tool against a compromised grant or an unexplained
+signing burst, not against the user — but a client MUST NOT describe a freeze as
+stopping all signing, and the freeze indicator MUST say what it actually covers.
+
+**(e) A delay with veto, for trusted-only kinds from a single trusted device.** Where
+a trusted-only kind is requested and the signing set contains exactly one trusted
+device, a co-signer MUST NOT return its partial signature immediately. It MUST:
+
+1. hold the request for the recovery delay of NKM §7.10 (NKM §4.2's default, 24
+   hours);
+2. send a notice to **every other trusted device** in the current epoch, naming the
+   requesting device by its label, the kind, and the time at which the request
+   completes;
+3. complete the round when the delay elapses, or immediately on an approval from any
+   other trusted device;
+4. abandon the round on a veto from any other trusted device, and refuse every
+   further request for that kind from that index until a trusted device clears the
+   veto.
+
+Where there is no other trusted device in the epoch, the delay elapses on its own,
+exactly as NKM §4.2 provides for a recovery with no registered device. The delay
+does not apply where the signing set already contains two trusted devices: the
+second device's participation is the approval, and a delay on top of it would only
+make the user's own hardware slower than the attacker's path.
+
+### 6.2 Mapping onto igloo-server's peer policies
+
+`igloo-server`'s `docs/PEER_POLICIES.md` defines a peer policy as a directional
+allow/deny pair on a peer pubkey — `allowSend`, `allowReceive`, plus a `label` and a
+`note` — sourced from the `PEER_POLICIES` environment variable, a per-user database
+column, and a `data/peer-policies.json` override file. `bifrost-rs` carries a richer
+form, `PeerScopedPolicyProfile` (`crates/bifrost-core/src/types.rs:435`–`443`), with
+`block_all` and a per-method `MethodPolicy` over `echo`, `ping`, `onboard`, `sign`
+and `ecdh` (`:382`–`388`). Neither reaches event kinds, counts, or time.
+
+| This document | Exists today | Where |
+|---|---|---|
+| Refuse an index absent from the epoch, unadmitted, or revoked (NKM §7.1, §7.9 tier 1) | **Exists.** A deny entry: `allowReceive: false` on that peer's pubkey. | `PEER_POLICIES.md`, "Schema (Recommended)" |
+| Coarse per-operation refusal, e.g. sign but not ECDH | **Exists in `bifrost-rs` only**, as `MethodPolicy`. No equivalent in `PEER_POLICIES.md`, whose granularity is the whole peer. | `bifrost-rs` `crates/bifrost-core/src/types.rs:382` |
+| **(a)** Kinds allowlist per grant | **New.** Policy has no notion of an event kind; the native sign request carries no event (§6.0). | — |
+| **(b)** Trusted-only kinds list | **New.** Requires both a kind and a tier, and the wire carries neither. | — |
+| **(c)** Rate limits per index | **New.** `igloo-server` rate-limits HTTP per IP and per endpoint bucket (`RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW`, `RATE_LIMIT_RECOVERY_*`, `RATE_LIMIT_WS_UPGRADE_*`), which is a different axis: it bounds a client address, not a share index, and a grant reaching the co-signer over relays is not counted by it at all. | `igloo-server` `docs/SECURITY.md`, `docs/CONFIG.md` |
+| **(d)** Freeze | **Partially exists.** The effect is expressible as `allowReceive: false` on every peer entry, or `block_all` per peer in `bifrost-rs`. What is new is that it is one group-scoped act rather than `N` per-peer edits, that it is atomic, and that it is lifted by a trusted device. | `PEER_POLICIES.md`; `bifrost-rs` `PeerScopedPolicyProfile.block_all` |
+| **(e)** Delay with veto | **New.** Policy is a synchronous allow/deny with no held state, no timer, and no notification path. | — |
+| Per-epoch grant records discarded on rotation (§5.3) | **New, and contrary to the existing persistence model.** `PEER_POLICIES.md` persists policies across restarts through `data/peer-policies.json` and the DB column, and treats the file as a "last known overrides" layer that wins over the environment baseline. A grant record MUST NOT survive its epoch, so a co-signer implementing this document MUST key grant state on the epoch and MUST NOT let the override file resurrect it. | `PEER_POLICIES.md`, "Precedence (What Wins)" |
+| Policy changed **on a trusted device's authority** | **New, and the largest gap.** Every policy mutation surface in `igloo-server` authenticates the *server operator* — a session, an API key, Basic Auth, or `ADMIN_SECRET` — not a member of the group. A freeze lifted "from a trusted device" has no representation: `/api/peers/*` has no notion of an `E.pub` signature. | `igloo-server` `docs/AUTH_MATRIX.md`, `/api/peers/*` and `/api/env*` rows |
+
+Rules (a), (b), (c) and (e) are new in full. (d) exists as an effect and not as an
+authority. The last row is the one an implementer will hit first: this document
+requires policy whose *principal* is the user's trusted device, and today's
+co-signer treats policy as operator configuration.
+
+---

@@ -255,40 +255,82 @@ reconstructs — and a client MUST present it as such rather than as a setting.
 | `k` | The group threshold: the total weight a signing set must bring |
 | `N` | Total live weight, the sum of all indices in the current epoch |
 | `T` | The weight of a trusted device — the number of indices each one holds |
+| `D` | The number of trusted devices in the current epoch |
 | `n_s` | The number of co-signers, each of weight 1 |
 | `W_g` | The sum of the weights of all live, unexpired grants — equal to their count, grants being weight 1 |
+| `W_cap` | The **grant cap**: the largest total live grant weight the co-signers will allow. Fixed at activation, recorded in the epoch record (§5.3), and enforced by every co-signer |
 | `s` | The **co-signer slack** for a trusted device: the number of co-signers that may be unreachable or refuse while a single trusted device can still sign |
 
 ### 4.2 The inequalities
 
-A configuration MUST satisfy (1), (2) and (3). (4) is **OPTIONAL and on by default**;
-§3.5 gives the choice and §4.6 the configuration that declines it.
+A configuration MUST satisfy (1), (2), (3) and (6). (4) is **OPTIONAL and on by
+default**; §3.5 gives the choice and §4.6 the configuration that declines it. (5) is
+Profile B's, and §4.6 states it.
 
 ```
 (1)  n_s < k                    co-signers alone never sign
 (2)  W_g < k                    grants alone never sign
 (3)  T + n_s − s ≥ k            one trusted device signs, losing up to s co-signers
 (4)  2T ≥ k                     two trusted devices recover with no co-signers   [optional]
+(6)  T + W_cap < k              for every trusted device: it and every grant it
+                                could issue never sign without a co-signer
 ```
 
 (1) is what makes a co-signer a co-signer rather than a custodian, and it does
 double duty: it is also what stops the co-signers from authorising a rotation among
-themselves (§7). (2) bounds the live-grant budget: the client MUST refuse to issue a
-grant that would bring `W_g` to `k`, and MUST count a grant as live from issue until
-its expiry passes or the rotation that drops it completes, whichever is earlier.
-(3) is the working path — the user posts from one device. (4) is the recovery path —
-two of the user's own devices are the key, with no server reachable and no grant
-outstanding.
+themselves (§7). (2) bounds live grant weight against the threshold, and (6) bounds it
+against a trusted device; the client MUST count a grant as live from issue until its
+expiry passes or the rotation that drops it completes, whichever is earlier. (3) is the
+working path — the user posts from one device. (4) is the recovery path — two of the
+user's own devices are the key, with no server reachable and no grant outstanding.
+
+**(6) exists because a trusted device issues grants.** §3.1 lets any trusted device
+issue a grant, and §5.1's issue is authorised by that device and co-signer votes to
+weight `k`. Nothing in §5.1 can tell whether the application receiving the grant is the user's
+or the device's own. So a **compromised trusted device can issue grants to itself** —
+one index at a time, each an ordinary, correctly authorised issue — and it then holds
+`T` plus the weight of every grant it issued. If that total reaches `k`, the device and
+its own grants are a signing set with **no co-signer in it**: §6 never runs, so the
+allowlist, the trusted-only list, the rate limits, §6.1(e)'s hold and §6.1(d)'s freeze
+all stop applying to it, and a weight-`k` set also reconstructs the nsec, which no later
+rotation undoes. One compromised device would have converted itself into the key using
+nothing but the operations this document grants it.
+
+(6) closes that. A co-signer MUST refuse to vote for, or act as a helper in (§5.1 step
+4), any grant issue that would bring `W_g` above `W_cap`, counting expired grants the
+rotation has not yet dropped (§5.2); and MUST refuse an epoch record whose `T` and
+`W_cap` break (6). The attacker then holds at most `T + W_cap < k` however many issues it
+attempts, and every set it can form from its own weight is short of `k` by at least one
+co-signer. Two consequences follow directly:
+
+- **Every §5.1 helper set contains a co-signer.** The helpers must reach `k` and include
+  the initiator's `T` indices; the initiator's other weight is at most `W_cap`, so by (6)
+  at least one helper is a co-signer, and an honest co-signer refuses an issue past the
+  cap.
+- **(6) implies (2),** because `W_g ≤ W_cap < k − T < k`. (2) is kept as the statement
+  of what it protects — no set of grants signs — which a reader checking a membership
+  wants without first deriving it.
+
+(6) is stated over one trusted device because it is the attack of one compromised
+device. Two compromised trusted devices under Profile A already reach `k` by (4), and
+§4.6 is the profile that answers that case.
+
+**The previous reference configuration violates (6).** At `k = 3, T = 2` with a
+live-grant budget of 2, `T + W_cap = 4 ≥ 3`; even a budget of 1 gives `3 ≥ 3`. A single
+self-issued grant was enough: the old enumeration listed `D1 + G1` as a signing set with
+no co-signer in it. At `k = 3` and `T = 2`, (6) permits no grant at all. Appendix C
+keeps that configuration and its enumeration as the counterexample; §4.4 replaces it.
 
 ### 4.3 What follows
 
-**`T < k` MUST hold.** It is not one of the four, but the four are chosen on the
-assumption of it and the document is incoherent without it: at `T ≥ k` a trusted
+**`T < k` MUST hold.** It is not one of the inequalities, and (6) implies it, but it is
+stated on its own because the document is incoherent without it: at `T ≥ k` a trusted
 device signs alone, no co-signer is ever in the signing set, and every rule in §6 is
 unenforceable because nothing routes through a party that could enforce it. Under
-Profile A, (4) bounds `T` narrowly from the other side too: `⌈k/2⌉ ≤ T ≤ k − 1`, and at
-`k = 3` the only value is `T = 2`. Under Profile B the lower bound is inverted —
-`2 ≤ T < k/2`, the lower limit being §3.1's `T > 1`.
+Profile A, (4) and (6) bound `T` from both sides: `⌈k/2⌉ ≤ T ≤ k − 1 − W_cap`. At `k = 3`
+the only value is `T = 2` and then `W_cap = 0`; a Profile A group that wants a grant needs
+`k ≥ 4`. Under Profile B the lower bound is inverted — `2 ≤ T < k/2`, the lower limit
+being §3.1's `T > 1`.
 
 **The slack is `s ≤ T + n_s − k`.** Rearranging (3). A configuration that wants a
 trusted device to survive one co-signer being down needs `T + n_s ≥ k + 1`.
@@ -308,30 +350,34 @@ screen that offers a grant: **a grant's availability is the product of every
 co-signer's availability.** One co-signer down takes every grant offline until a
 trusted device is present. This is a deliberate cost, not an oversight: the whole
 reason a grant is weight 1 is that it is one unit short of anything, and buying it
-slack means buying it authority.
+slack means buying it authority. A session (§5.0) has no such cost, because it signs
+as the trusted device.
 
 **Raising a grant's weight buys slack at a price that is rarely worth paying.** A
-grant of weight `w` must satisfy `n_g·w = W_g < k`, so one live grant may reach
-`w = k − 1` — but `k − 1 ≥ T`, so that grant is then at least as powerful as a
-trusted device while being, by definition, the tier that is not trusted, and one
-compromised co-signer completes it. A client MAY offer grant weights above 1 only
-where `w < T` and `n_g·w < k` both hold, MUST default to `w = 1`, and MUST NOT offer
-any weight at which a single co-signer plus one grant reaches `k`.
+grant of weight `w` counts `w` against the cap, so by (6) `w ≤ W_cap < k − T`: a grant
+can never be heavier than the gap between a trusted device and the threshold, less one.
+Within that, a heavier grant is still the tier that is not trusted, and it needs fewer
+co-signers to finish the more it weighs. A client MAY offer grant weights above
+1 only where `w < T` and `n_g·w ≤ W_cap` both hold, MUST default to `w = 1`, and MUST NOT
+offer any weight at which a single co-signer plus one grant reaches `k`.
 
 ### 4.4 Reference configuration (Profile A)
 
 ```
-k    = 3
-T    = 2          two indices per trusted device
-n_s  = 2          two co-signers, one index each
-W_g  ≤ 2          at most two live grants, one index each
-s    = 1          a trusted device survives one co-signer being down
+k      = 4
+T      = 2          two indices per trusted device
+n_s    = 3          three co-signers, one index each
+W_cap  = 1          at most one live grant, of weight 1
+s      = 1          a trusted device survives one co-signer being down
 ```
 
-Checks: `n_s = 2 < 3` ✓ — `W_g ≤ 2 < 3` ✓ — `T + n_s − s = 2 + 2 − 1 = 3 ≥ 3` ✓ —
-`2T = 4 ≥ 3` ✓ — `T = 2 < 3` ✓.
+Checks: `n_s = 3 < 4` ✓ — `W_g ≤ 1 < 4` ✓ — `T + n_s − s = 2 + 3 − 1 = 4 ≥ 4` ✓ —
+`2T = 4 ≥ 4` ✓ — `T + W_cap = 2 + 1 = 3 < 4` ✓ — `T = 2 < 4` ✓.
 
-With two trusted devices and two live grants, `N = 8`:
+`T = k − 2` here. Every argument in this document that needs a relation between `T` and
+`k` states the one it uses; none assumes `T = k − 1`.
+
+With two trusted devices and the one live grant, `N = 8`:
 
 | Index | Party | Tier |
 |---|---|---|
@@ -339,58 +385,65 @@ With two trusted devices and two live grants, `N = 8`:
 | 3, 4 | `D2` | Trusted device |
 | 5 | `C1` | Co-signer |
 | 6 | `C2` | Co-signer |
-| 7 | `G1` | Grant |
-| 8 | `G2` | Grant |
+| 7 | `C3` | Co-signer |
+| 8 | `G1` | Grant |
 
 ### 4.5 Every signing set of the reference configuration (Profile A)
 
 Minimal authorised sets — those of weight `≥ k` with no authorised proper subset.
-There are thirteen. A set is listed once; adding any further party to a listed set
-is also authorised and is not listed again.
+There are fourteen. A set is listed once; adding any further party to a listed set
+is also authorised and is not listed again. The **label** is `tiers_check.py`'s,
+tested in this order: **no-co-signer** (no co-signer in the set, so §6 never runs),
+**collusion** (no trusted device), **mixed** (a trusted device, a co-signer and a
+grant), **trusted** (trusted devices and co-signers only). The table is
+`vectors/tiers-profile-a.json`.
 
-| # | Set | Weight | What it is |
-|---|---|---|---|
-| 1 | `D1 + D2` | 4 | Two trusted devices. The recovery path of (4); no server, no grant. |
-| 2 | `D1 + C1` | 3 | Ordinary signing from a trusted device. |
-| 3 | `D1 + C2` | 3 | Ordinary signing from a trusted device, the other co-signer. |
-| 4 | `D2 + C1` | 3 | Ordinary signing from the second trusted device. |
-| 5 | `D2 + C2` | 3 | Ordinary signing from the second trusted device, the other co-signer. |
-| 6 | `D1 + G1` | 3 | A grant finishing against a trusted device, no co-signer reachable. |
-| 7 | `D1 + G2` | 3 | As 6, the other grant. |
-| 8 | `D2 + G1` | 3 | As 6, the other trusted device. |
-| 9 | `D2 + G2` | 3 | As 6, the other trusted device and grant. |
-| 10 | `C1 + C2 + G1` | 3 | **Collusion.** One grant plus both co-signers. No trusted device. |
-| 11 | `C1 + C2 + G2` | 3 | **Collusion.** As 10, the other grant. |
-| 12 | `C1 + G1 + G2` | 3 | **Collusion.** Two grants plus one co-signer. No trusted device. |
-| 13 | `C2 + G1 + G2` | 3 | **Collusion.** As 12, the other co-signer. |
+| # | Set | Weight | Label | What it is |
+|---|---|---|---|---|
+| 1 | `D1 + D2` | 4 | no-co-signer | Two trusted devices. The recovery path of (4); no server, no grant, no §6. |
+| 2 | `D1 + C1 + C2` | 4 | trusted | Ordinary signing from a trusted device. |
+| 3 | `D1 + C1 + C3` | 4 | trusted | As 2, another pair of co-signers. |
+| 4 | `D1 + C2 + C3` | 4 | trusted | As 2, the third pair — the one that signs while `C1` is down. |
+| 5 | `D2 + C1 + C2` | 4 | trusted | Ordinary signing from the second trusted device. |
+| 6 | `D2 + C1 + C3` | 4 | trusted | As 5, another pair of co-signers. |
+| 7 | `D2 + C2 + C3` | 4 | trusted | As 5, the third pair. |
+| 8 | `D1 + C1 + G1` | 4 | mixed | The grant finishing against a trusted device, one co-signer checking it. |
+| 9 | `D1 + C2 + G1` | 4 | mixed | As 8, another co-signer. |
+| 10 | `D1 + C3 + G1` | 4 | mixed | As 8, the third co-signer. |
+| 11 | `D2 + C1 + G1` | 4 | mixed | As 8, the second trusted device. |
+| 12 | `D2 + C2 + G1` | 4 | mixed | As 11, another co-signer. |
+| 13 | `D2 + C3 + G1` | 4 | mixed | As 11, the third co-signer. |
+| 14 | `C1 + C2 + C3 + G1` | 4 | collusion | The grant with every co-signer and no trusted device. How the grant signs phone-free under honest co-signers; **collusion** if all three abandon §6. |
 
-Every set of weight 2 or less is unauthorised, including all of: a single trusted
-device; both co-signers together; both grants together; one co-signer with one
-grant.
+Every set of weight 3 or less is unauthorised, including all of: a single trusted
+device; a single trusted device with the grant — the set (6) exists to keep short; a
+single trusted device with one co-signer; all three co-signers; the grant with two
+co-signers.
 
-**Sets 10 to 13 are real and are not prevented by the mathematics.** The access
-structure is flat (§2.1), so "a trusted device must be present" is not something `k`
-can say. What sets 10 to 13 cost an attacker is the honest measure of the design:
+**Set 14 is real and is not prevented by the mathematics.** The access structure is
+flat (§2.1), so "a trusted device must be present" is not something `k` can say. What
+set 14 costs an attacker is the honest measure of the design:
 
-- **Sets 10 and 11 require both co-signers and one grant.** That is two
-  independently administered servers, each of which must abandon §6, plus one live
-  app grant. If the co-signers are one operator's two processes, §3.2 requires them
-  counted as one party of weight 2, and these sets do not exist.
-- **Sets 12 and 13 require one co-signer and both live grants.** This is the cheapest
-  hostile set in the configuration, and it is the reason (2) exists and the reason the
-  live-grant budget is a budget rather than a default. A user running one live grant
-  instead of two removes sets 12 and 13 entirely.
-- **Nothing in sets 10 to 13 reaches a trusted device's storage.** They reach the
-  threshold, which means they can sign and can reconstruct. §6 is what stops the
-  honest members of such a set from participating, §7 is what stops such a set from
-  quietly reissuing a trusted share, and §11 is what bounds the damage of the case
-  this document cares most about.
-- **Reducing the live-grant budget to one, or running only one co-signer, removes
-  every collusion set.** At `n_s = 1` and `W_g ≤ 1`, no set without a trusted device
-  reaches 3. The cost is that (3) then fails at `s = 1` — a trusted device has no
-  slack, and the single co-signer is a single point of unavailability. This is the
-  trade the configuration makes, and a client SHOULD present it as a choice rather
-  than picking silently.
+- **It requires all three co-signers and the live grant.** That is three independently
+  administered servers, each of which must abandon §6, plus the one grant the cap
+  allows. If two of the co-signers are one operator's processes, §3.2 counts them as
+  one party of weight 2, and set 14 is then two operators' decision rather than three.
+- **No set in which the grant is needed lacks a co-signer.** Sets 8 to 14 all contain
+  one. This is (6): a trusted device and the grant total 3, so the grant never lets a
+  device skip the co-signers, whoever issued it. The only set with no co-signer is set
+  1, which needs two trusted devices; Profile B is the configuration that removes it.
+- **Nothing in set 14 reaches a trusted device's storage.** It reaches the threshold,
+  which means it can sign and can reconstruct. §6 is what stops the honest members of
+  such a set from participating, §7 is what stops such a set from quietly reissuing a
+  trusted share, and §11 is what bounds the damage of the case this document cares most
+  about.
+- **Running no grant, or two co-signers instead of three, removes set 14.** At
+  `W_cap = 0` no set without a trusted device reaches 4, and sessions (§5.0) remain
+  available to every application. At `n_s = 2` the same holds, but (3) then fails at
+  `s = 1` (`2 + 2 − 1 = 3 < 4`) — a trusted device has no slack — and a lone grant
+  cannot sign without a trusted device at all (`1 + 2 < 4`). This is the trade the
+  configuration makes, and a client SHOULD present it as a choice rather than picking
+  silently.
 
 ### 4.6 Profile B — declining constraint (4)
 
@@ -399,15 +452,21 @@ key that works with nothing reachable declines (4). The configuration then requi
 `2T < k`, and the reference is:
 
 ```
-k    = 5
-T    = 2          two indices per trusted device
-n_s  = 4          four co-signers, one index each
-W_g  ≤ 4          grants total weight under 5
-s    = 1          a trusted device survives one co-signer being down
+k      = 5
+T      = 2          two indices per trusted device
+n_s    = 4          four co-signers, one index each
+W_cap  = 2          live grants total weight at most 2
+s      = 1          a trusted device survives one co-signer being down
 ```
 
-Checks: `n_s = 4 < 5` ✓ — `W_g ≤ 4 < 5` ✓ — `T + n_s − s = 2 + 4 − 1 = 5 ≥ 5` ✓ —
-`T = 2 < 5` ✓ — `2T = 4 < 5`, so two trusted devices alone do **not** reach `k`.
+Checks: `n_s = 4 < 5` ✓ — `W_g ≤ 2 < 5` ✓ — `T + n_s − s = 2 + 4 − 1 = 5 ≥ 5` ✓ —
+`T + W_cap = 2 + 2 = 4 < 5` ✓ — `T = 2 < 5` ✓ — `2T = 4 < 5`, so two trusted devices
+alone do **not** reach `k`.
+
+**Checked against (6).** An earlier version of this profile allowed live grants up to
+weight 4, the most (2) permits. That broke (6): `T + 4 = 6 ≥ 5`, so one trusted device and
+two self-issued grants reached `k` with no co-signer. `W_cap = 2` is the largest cap (6)
+allows at `k = 5, T = 2`.
 
 **The benefit, stated exactly.** What Profile B removes is the set of signatures no
 co-signer sees. The full property is stronger than "(4) is off", and it has its own
@@ -417,25 +476,26 @@ condition:
 (5)  D·T + W_g < k               every signing set contains a co-signer
 ```
 
-where `D` is the number of trusted devices. (5) is what makes §6 unconditional: every
-signature, from every party, in every combination, passes through a co-signer, so the
-kinds allowlist, the trusted-only list, the rate limits, the delay with veto and the
-freeze apply to everything the identity ever signs.
+(5) is what makes §6 unconditional: every signature, from every party, in every
+combination, passes through a co-signer, so the kinds allowlist, the trusted-only list,
+the rate limits, the delay with veto and the freeze apply to everything the identity
+ever signs. (6) is (5) at `D = 1` and a full grant cap, so under (6) a single trusted
+device never breaks (5); only a second trusted device can.
 
 **(5) is not free at the reference numbers, and this is the part that is easy to get
-wrong.** At `k = 5, T = 2`:
+wrong.** At `k = 5, T = 2, W_cap = 2`:
 
 | Trusted devices `D` | Live grants `W_g` for (5) to hold |
 |---|---|
-| 1 | up to 2 |
+| 1 | any the cap allows, 0 to 2 |
 | 2 | 0 |
 | 3 or more | (5) cannot hold |
 
 So the reference Profile B removes "two trusted devices sign alone" at any grant
-budget, but reaches the full (5) with two trusted devices only when no grant is live. To
+weight, but reaches the full (5) with two trusted devices only when no grant is live. To
 hold (5) with two trusted devices and two live grants, `D·T + W_g = 6`, so `k ≥ 7`:
-`k = 7, T = 2, n_s = 6, W_g ≤ 2`, which satisfies (1), (2), (3) at `s = 1` and (5) at
-`D ≤ 2`.
+`k = 7, T = 2, n_s = 6, W_cap = 2`, which satisfies (1), (2), (3) at `s = 1`, (6), and (5)
+at `D ≤ 2` with the cap full.
 
 **A client implementing Profile B MUST re-check (5) on every rotation that adds a
 trusted device or issues a grant, and MUST refuse the operation that would break it.**
@@ -447,20 +507,23 @@ admitted.
 
 1. **The offline path is gone.** Two trusted devices with nothing reachable cannot sign.
    The user's identity is unusable unless `k − T` co-signers are reachable — three of
-   four at `k = 5`, five of six at `k = 7`. §8's backup restores a trusted device that
-   still cannot sign alone, and §7.18 of NKM — the serverless quorum — is the opposite
-   choice from this one. This is the whole of what (4) was buying.
-2. **Two to three times the co-signers**, since (3) needs `n_s ≥ k − T + s`. Each is
-   another independently administered service to find, trust and keep reachable, and
-   another place an index can be stolen from.
+   four at `k = 5`, five of six at `k = 7`, against two of three under Profile A. §8's
+   backup restores a trusted device that still cannot sign alone, and §7.18 of NKM — the
+   serverless quorum — is the opposite choice from this one. This is the whole of what
+   (4) was buying.
+2. **More co-signers**, since (3) needs `n_s ≥ k − T + s`: four or six against Profile
+   A's three. Each is another independently administered service to find, trust and keep
+   reachable, and another place an index can be stolen from.
 3. **Availability gets worse, not better.** The slack `s` is still 1: a single trusted
-   device tolerates exactly one co-signer outage at `k = 5` as at `k = 3`. But it now
-   depends on three of four rather than one of two, so the probability that enough are
+   device tolerates exactly one co-signer outage at `k = 5` as at `k = 4`. But it now
+   depends on three of four rather than two of three, so the probability that enough are
    down rises with `n_s` while the tolerance does not.
-4. **Collusion does not go away; it gets more expensive.** At `k = 5, n_s = 4, W_g = 2`,
-   all four co-signers plus one grant total 5 and sign with no trusted device — §4.5's
-   sets 10 and 11 in a larger shape. Four independently administered servers must defect
-   instead of two. Harder, not impossible, and §7.3's statement is unchanged.
+4. **Collusion does not go away, and at a full cap it costs no more co-signers.** At
+   `k = 5, n_s = 4`, all four co-signers plus one grant total 5 and sign with no trusted
+   device — §4.5's set 14 in a larger shape — but so do three co-signers and both grants
+   where `W_g = 2`. That is three independently administered servers defecting, the same
+   number set 14 needs under Profile A. With one live grant it is four. §7.3's statement
+   is unchanged.
 5. **The choice is not reversible in place.** §3.5: `k` differs between profiles and a
    rotation cannot change `k`, so switching is a Re-split.
 
@@ -638,9 +701,10 @@ which holds no share and is not a rotation.
 **What interception of a grant share costs.** An intercepted grant index is one unit
 of weight. By (2) it cannot sign alone, and by §6 no honest co-signer will co-sign
 for an unadmitted index. But neither expiry nor rotation undoes a reconstruction:
-in the reference configuration an intercepted grant, the other live grant, and one
-co-signer total `k` (sets 12 and 13 of §4.5). The bound on interception is therefore
-the live-grant budget and the co-signers' honesty, not revocation, and a client MUST
+in the reference configuration an intercepted grant and every co-signer total `k`
+(set 14 of §4.5), as do an intercepted grant, a trusted device and one co-signer (sets 8
+to 13). The bound on interception is therefore the grant cap and the co-signers'
+honesty, not revocation, and a client MUST
 NOT present grant delivery as recoverable if it goes wrong.
 
 ### 5.2 Expiry
@@ -691,7 +755,7 @@ NKM §7.4 already defines, the additional fields needed to evaluate §4 and §6.
 structured object; this document adds fields to that object and changes nothing
 about how it is published.
 
-- Group-wide: `k`, `T`, `n_s`, the live-grant budget, and the commitment vector of
+- Group-wide: `k`, `T`, `n_s`, the grant cap `W_cap` (§4.2), and the commitment vector of
   §5.1 step 2.
 - Per member: `party` — a stable identifier shared by every index one party holds —
   and `tier`, one of `trusted`, `cosigner`, `grant`; and for a grant, `expiry`,
@@ -993,7 +1057,7 @@ drive a rotation and reissue a trusted-weight share, once the delay elapses.** T
 requirement in 7.2(1) that a trusted device initiate is a rule co-signers follow, not
 a fact the mathematics enforces; the access structure is flat (§2.1) and a weight-`k`
 set can sign any epoch record it likes. In the reference configuration such sets
-exist and are enumerated as sets 10 to 13 of §4.5. Where `n_s ≥ k` the co-signers
+exist and are enumerated as set 14 of §4.5. Where `n_s ≥ k` the co-signers
 alone would be such a set, which is the second reason constraint (1) exists.
 
 The only thing between that set and the key is 7.2(3)'s delay and veto, and **the
@@ -1017,9 +1081,9 @@ those terms, and MUST NOT describe co-signers as unable to reach the key.
 Two things narrow it, and neither closes it:
 
 - Constraint (1) means the co-signers need help — a grant, or a trusted device — to
-  reach `k`. The live-grant budget is therefore a security parameter for this
-  property and not only for §4.5, and a user running no live grants removes the
-  cheapest version of it.
+  reach `k`. The grant cap is therefore a security parameter for this property and
+  not only for §4.5, and a user running no live grants removes the only such set at
+  the reference configuration.
 - Co-signers that are independently administered must all defect. §3.2's rule that
   one operator's several processes count as one party is what keeps that from being a
   single decision by a single operator.
@@ -1270,11 +1334,11 @@ line are cited beside it.
 
 | Threat | Raw nsec pasted | NIP-46 to a signer app | This document |
 |---|---|---|---|
-| Malicious web app | Holds the key permanently; there is nothing to revoke and no way to learn it happened. | Cannot take the key, but signs whatever the signer's policy permits, for as long as the session stands. | By default holds no share: a session (§5.0) signs only what the trusted device approves, through co-signers, and ends the moment the user ends it. Where given a grant instead, holds one weight-1 grant that reaches `k` only with a trusted device, with every co-signer, or with a co-signer and another live grant (§4.5 sets 6–13), signs no destructive kind (§6.1(b)), expires, and is dropped at the next rotation (§3.3). |
-| Compromised trusted device | Is the key, totally and permanently. | Is the key if that device runs the signer; otherwise one revocable session. | Holds `T`, short of `k` by §4.3, so it needs a co-signer or a live grant it does not control (§4.5 sets 2–9); delayed and vetoable on trusted-only kinds where a co-signer is in the set (§6.1(e)), cut off immediately by §7.1, rotated out by §7.2. |
-| Compromised co-signer(s) | No such party exists. | The signer is the only party, so compromising it is compromising the key. | One index each and `n_s < k`, so they neither sign nor rotate alone — but with the live grants they reach `k` (§4.5 sets 10–13), which §7.3 states as accepted. |
-| Malicious grant holder | No analogue; the application was given the key. | Its session signs whatever the signer allows, for as long as the user leaves it connected. | Weight 1, allowlisted kinds only, needs a trusted device, every co-signer, or a co-signer and another live grant (§4.5 sets 6–13), and ends at its expiry or the next rotation, whichever comes first (§5.2). |
-| Grant holder colluding with co-signers | No analogue. | No analogue: one party holds everything, so there is nobody to collude with. | Reaches `k` and is therefore the key (§4.5 sets 10–13); the live-grant budget of constraint (2) is the only bound, and §7.3 refuses to hide it. |
+| Malicious web app | Holds the key permanently; there is nothing to revoke and no way to learn it happened. | Cannot take the key, but signs whatever the signer's policy permits, for as long as the session stands. | By default holds no share: a session (§5.0) signs only what the trusted device approves, through co-signers, and ends the moment the user ends it. Where given a grant instead, holds one weight-1 grant that reaches `k` only with a trusted device and a co-signer (§4.5 sets 8–13) or with every co-signer (set 14), signs no destructive kind (§6.1(b)), expires, and is dropped at the next rotation (§3.3). |
+| Compromised trusted device | Is the key, totally and permanently. | Is the key if that device runs the signer; otherwise one revocable session. | Holds `T`, short of `k` by §4.3, so it needs co-signers it does not control (§4.5 sets 2–13); by (6) no grant it issues itself replaces them; delayed and vetoable on trusted-only kinds where a co-signer is in the set (§6.1(e)), cut off immediately by §7.1, rotated out by §7.2. |
+| Compromised co-signer(s) | No such party exists. | The signer is the only party, so compromising it is compromising the key. | One index each and `n_s < k`, so they neither sign nor rotate alone — but all of them with the live grant reach `k` (§4.5 set 14), which §7.3 states as accepted. |
+| Malicious grant holder | No analogue; the application was given the key. | Its session signs whatever the signer allows, for as long as the user leaves it connected. | Weight 1, allowlisted kinds only, needs a trusted device and a co-signer, or every co-signer (§4.5 sets 8–14), and ends at its expiry or the next rotation, whichever comes first (§5.2). |
+| Grant holder colluding with co-signers | No analogue. | No analogue: one party holds everything, so there is nobody to collude with. | With every co-signer, reaches `k` and is therefore the key (§4.5 set 14); the grant cap of constraints (2) and (6) is the only bound, and §7.3 refuses to hide it. |
 | Malicious signer app | Has the key the moment it is pasted in. | Holds the whole key by design; its scoping is its own code and it may ignore it. | Holds at most a grant, or `T` if the user made it a trusted device; the policy that binds it runs on parties it does not control (§6). |
 | Phishing of a consent screen | Yields the key; the screen is the only control and the attacker wrote it. | Yields a connection the user believes is scoped, where the scope is asserted by the page requesting it. | Yields at most a session or one grant at its allowlist — except a fake backup-factor screen, which yields a trusted device's weight (§8.3) and is the residual. |
 | Device loss | Is the key, behind whatever the device's storage offered; no revocation exists. | Is one revocable session, or the key if the lost device ran the signer. | Weight `T` at NKM §2.1 level 3, inert until a second party is taken; refusal is immediate (§7.1) and rotation removes it (§7.2). |
@@ -1533,6 +1597,59 @@ its own wrap.
 defended and no burner lifetime beyond the session's own. B.1 above that, accepting
 the QRST question filed in SPEC_ISSUES.md.
 
+
+## Appendix C — The `k = 3` configuration (counterexample to (6), non-normative)
+
+This was the reference configuration of §4.4 before constraint (6). It satisfies (1),
+(2), (3) and (4), and it is kept because it shows exactly what (6) forbids. **It MUST NOT
+be used.**
+
+```
+k    = 3
+T    = 2          two indices per trusted device
+n_s  = 2          two co-signers, one index each
+W_g  ≤ 2          at most two live grants, one index each
+s    = 1          a trusted device survives one co-signer being down
+```
+
+Checks: `n_s = 2 < 3` ✓ — `W_g ≤ 2 < 3` ✓ — `T + n_s − s = 2 + 2 − 1 = 3 ≥ 3` ✓ —
+`2T = 4 ≥ 3` ✓ — `T + W_cap = 2 + 2 = 4 < 3` ✗. With a budget of one grant it is still
+`2 + 1 = 3 < 3` ✗; at `k = 3, T = 2`, (6) holds only with no grant at all.
+
+With two trusted devices `D1`, `D2`, co-signers `C1`, `C2` and grants `G1`, `G2`, its
+thirteen minimal signing sets, labelled as in §4.5:
+
+| # | Set | Weight | Label |
+|---|---|---|---|
+| 1 | `D1 + D2` | 4 | no-co-signer |
+| 2 | `D1 + C1` | 3 | trusted |
+| 3 | `D1 + C2` | 3 | trusted |
+| 4 | `D2 + C1` | 3 | trusted |
+| 5 | `D2 + C2` | 3 | trusted |
+| 6 | `D1 + G1` | 3 | no-co-signer |
+| 7 | `D1 + G2` | 3 | no-co-signer |
+| 8 | `D2 + G1` | 3 | no-co-signer |
+| 9 | `D2 + G2` | 3 | no-co-signer |
+| 10 | `C1 + C2 + G1` | 3 | collusion |
+| 11 | `C1 + C2 + G2` | 3 | collusion |
+| 12 | `C1 + G1 + G2` | 3 | collusion |
+| 13 | `C2 + G1 + G2` | 3 | collusion |
+
+**Sets 6 to 9 are the failure.** Each is one trusted device and one grant, with no
+co-signer. Written as "a grant finishing against a trusted device", they look like
+availability. Read from the other side they are the §4.2 attack at its cheapest: a
+compromised `D1` issues one grant to an application it controls, which §5.1 authorises
+because `D1` is a trusted device, and `D1 + G_self` is then weight `k` with no co-signer —
+signing anything, past every rule of §6, and reconstructing the nsec. No second grant
+and no collusion are needed. Constraint (2) did not catch it, because it bounds grants
+against the threshold and not against the device that issues them.
+
+Sets 12 and 13 are a second, smaller cost of the same budget: one co-signer and two
+grants reach `k`, so an intercepted grant needed only the other grant and one server.
+§4.4's replacement removes both at once: `W_cap = 1` leaves no two-grant set, and `k = 4`
+puts every trusted-device-and-grant set one co-signer short.
+
+`vectors/tiers-rejected.json` carries this configuration as the case for (6).
 
 ## Status
 

@@ -19,9 +19,9 @@ None belongs to anybody, and none should ever be used for anything.
 |---|---|
 | `qrst-sas.json` | QRST §6 — the commit, the transcript hash, and the five digits. |
 | `nkm-frost.json` | NKM §7.4, §7.5, §7.9, §7.18 — dealing, share verification, signing, rotation. |
-| `tiers-profile-a.json` | TIERS §4.4, §4.5 — Profile A's reference membership, its constraint results and slacks, and all thirteen minimal signing sets in the table's order. |
-| `tiers-profile-b.json` | TIERS §4.6 — Profile B at every row of the (5) table and every grant budget (2) allows, with the number of minimal sets under each label. |
-| `tiers-rejected.json` | TIERS §2.2, §3.1, §3.2, §4.2, §4.3, §4.6 — one membership per constraint that fails. |
+| `tiers-profile-a.json` | TIERS §4.4, §4.5 — Profile A's reference membership (`k = 4`), its constraint results and slacks, and all fourteen minimal signing sets in the table's order. |
+| `tiers-profile-b.json` | TIERS §4.6 — Profile B at every row of the (5) table and every grant weight its cap allows, with the number of minimal sets under each label. |
+| `tiers-rejected.json` | TIERS §2.2, §3.1, §3.2, §4.2, §4.3, §4.6, Appendix C — one membership per constraint that fails, including the former `k = 3` reference as the case for (6). |
 
 ## Provenance
 
@@ -59,7 +59,8 @@ checked against them by [`test_tiers_check.py`](../test_tiers_check.py). The tes
 checks the script's enumeration against a brute-force powerset wherever the membership
 is small enough, and requires the enumeration and the inequalities to agree: (5) holds
 exactly when no minimal set lacks a co-signer, (1) fails exactly when co-signers alone
-form one, and (2) exactly when grants alone do. Party names are fixtures.
+form one, (2) exactly when grants alone do, and where (6) holds no minimal set is one
+trusted device with grants. Party names are fixtures.
 
 ```
 python3 -m unittest test_tiers_check

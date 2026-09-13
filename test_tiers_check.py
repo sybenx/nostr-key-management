@@ -44,12 +44,18 @@ class Vectors(unittest.TestCase):
         self.assertEqual(got["optional"]["5"], all("cosigner" in k for k in kinds))
         self.assertEqual(not got["required"]["1"], {"cosigner"} in kinds)
         self.assertEqual(not got["required"]["2"], {"grant"} in kinds)
+        # (6) with the cap respected: one trusted device and grants never reach k.
+        if got["required"]["6"] and got["preconditions"]["W_g<=W_cap"]:
+            for s in got["sets"]:
+                tiers_in = [tiers[p] for p in s["parties"]]
+                self.assertFalse(tiers_in.count("trusted") == 1 and set(tiers_in) == {"trusted", "grant"},
+                                 s["parties"])
         if len(tiers) <= 14:
             self.assertEqual(sorted(sorted(s["parties"]) for s in got["sets"]), brute_force(m))
 
     def test_profile_a(self):
         cases = vector("tiers-profile-a.json")["cases"]
-        self.assertEqual(len(cases[0]["expect"]["sets"]), 13)
+        self.assertEqual(len(cases[0]["expect"]["sets"]), 14)
         for case in cases:
             with self.subTest(case["name"]):
                 self.check_case(case)
@@ -71,7 +77,7 @@ class MembershipChange(unittest.TestCase):
     """§4.6: (5) is a property of the membership, so admitting a device can break it."""
 
     def test_third_trusted_device_breaks_5(self):
-        m = {"k": 5, "T": 2, "s": 1, "trusted_devices": ["D1", "D2"],
+        m = {"k": 5, "T": 2, "s": 1, "W_cap": 2, "trusted_devices": ["D1", "D2"],
              "co_signers": ["C1", "C2", "C3", "C4"], "grants": []}
         code, before = run(m)
         self.assertEqual(code, 0)
@@ -82,7 +88,7 @@ class MembershipChange(unittest.TestCase):
         m["trusted_devices"].append("D3")
         code, after = run(m)
         self.assertEqual(code, 0, "(5) is optional and must not change the exit status")
-        self.assertEqual(after["required"], {"1": True, "2": True, "3": True})
+        self.assertEqual(after["required"], {"1": True, "2": True, "3": True, "6": True})
         self.assertIs(after["optional"]["5"], False)
         self.assertIn({"parties": ["D1", "D2", "D3"], "weight": 6, "label": "no-co-signer"},
                       after["sets"])
@@ -91,24 +97,33 @@ class Boundaries(unittest.TestCase):
     """Each inequality at equality, where the vectors' odd k and small N never land."""
 
     def test_4_holds_at_2T_equal_k(self):
-        code, r = run({"k": 4, "T": 2, "s": 0, "trusted_devices": ["D1", "D2"],
+        code, r = run({"k": 4, "T": 2, "s": 0, "W_cap": 1, "trusted_devices": ["D1", "D2"],
                        "co_signers": ["C1", "C2"], "grants": []})
         self.assertEqual(code, 0)
         self.assertIs(r["optional"]["4"], True)
         self.assertIn({"parties": ["D1", "D2"], "weight": 4, "label": "no-co-signer"}, r["sets"])
 
     def test_N_255_is_the_last_index(self):
-        m = {"k": 3, "T": 2, "s": 1, "trusted_devices": [f"D{i}" for i in range(1, 127)],
-             "co_signers": ["C1", "C2"], "grants": [{"party": "G1", "weight": 1}]}
+        m = {"k": 4, "T": 2, "s": 1, "W_cap": 1, "trusted_devices": [f"D{i}" for i in range(1, 127)],
+             "co_signers": ["C1", "C2", "C3"], "grants": []}
         code, r = run(m)
         self.assertEqual((code, r["N"], r["preconditions"]["N<=255"]), (0, 255, True))
-        m["grants"].append({"party": "G2", "weight": 1})
+        m["grants"].append({"party": "G1", "weight": 1})
         code, r = run(m)
         self.assertEqual((code, r["N"], r["preconditions"]["N<=255"]), (1, 256, False))
 
+    def test_6_holds_at_T_plus_W_cap_one_short(self):
+        base = {"k": 4, "T": 2, "s": 1, "trusted_devices": ["D1"], "co_signers": ["C1", "C2", "C3"]}
+        code, r = run(dict(base, W_cap=1, grants=[{"party": "G1", "weight": 1}]))
+        self.assertEqual((code, r["required"]["6"]), (0, True))
+        code, r = run(dict(base, W_cap=2, grants=[{"party": "G1", "weight": 1}, {"party": "G2", "weight": 1}]))
+        self.assertEqual((code, r["required"]["6"]), (1, False))
+        self.assertIn({"parties": ["D1", "G1", "G2"], "weight": 4, "label": "no-co-signer"}, r["sets"])
+
     def test_unreadable_input_exits_2(self):
-        for bad in ({"k": "3", "T": 2}, {"k": 3, "T": 2, "grants": [{"party": "G1"}]},
-                    {"k": 3, "T": 2, "trusted_devices": ["X"], "co_signers": ["X"]}):
+        for bad in ({"k": "3", "T": 2, "W_cap": 0}, {"k": 3, "T": 2, "W_cap": 0, "grants": [{"party": "G1"}]},
+                    {"k": 3, "T": 2, "W_cap": 0, "trusted_devices": ["X"], "co_signers": ["X"]},
+                    {"k": 4, "T": 2, "trusted_devices": ["D1"]}):
             p = subprocess.run([sys.executable, SCRIPT, "-"], input=json.dumps(bad),
                                capture_output=True, text=True)
             self.assertEqual(p.returncode, 2, bad)

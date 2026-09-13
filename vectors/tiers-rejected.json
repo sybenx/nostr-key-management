@@ -1,26 +1,28 @@
 {
   "spec": "TIERS.md",
   "version": "1.0-draft",
-  "section": "2.2, 3.1, 3.2, 4.2, 4.3, 4.6",
-  "description": "One membership per constraint, each chosen so that the named constraint fails. For (1), (2) and (3) every other required constraint and precondition holds, so the nonzero exit is attributable to the one named. (4) and (5) are optional: their cases exit 0 and report the failure, which is how a client learns a membership is not Profile A, or not policy-complete under Profile B. The preconditions are the MUSTs §4.2's inequalities assume; k >= 3 cannot fail alone, because k = 2 leaves no T with 1 < T < k.",
+  "section": "2.2, 3.1, 3.2, 4.2, 4.3, 4.6, Appendix C",
+  "description": "One membership per constraint, each chosen so that the named constraint fails. For (1), (3) and (6) every other required constraint and precondition holds, so the nonzero exit is attributable to the one named. (2) cannot fail alone: (6) and W_g <= W_cap together imply it, so its case also fails (6). (4) and (5) are optional: their cases exit 0 and report the failure, which is how a client learns a membership is not Profile A, or not policy-complete under Profile B. The preconditions are the MUSTs the inequalities assume; k >= 3 cannot fail alone, because k = 2 leaves no T with 1 < T < k, and T < k fails together with (6), which implies it.",
   "cases": [
     {
-      "name": "(1) n_s < k: three co-signers at k = 3 sign alone",
+      "name": "(1) n_s < k: four co-signers at k = 4 sign alone",
       "violates": {
         "group": "required",
         "constraint": "1"
       },
       "membership": {
-        "k": 3,
+        "k": 4,
         "T": 2,
         "s": 1,
+        "W_cap": 1,
         "trusted_devices": [
           "D1"
         ],
         "co_signers": [
           "C1",
           "C2",
-          "C3"
+          "C3",
+          "C4"
         ],
         "grants": []
       },
@@ -32,12 +34,14 @@
           "T>1": true,
           "T<k": true,
           "D>=1": true,
-          "w<T": true
+          "w<T": true,
+          "W_g<=W_cap": true
         },
         "required": {
           "1": false,
           "2": true,
-          "3": true
+          "3": true,
+          "6": true
         },
         "optional": {
           "4": true,
@@ -50,21 +54,23 @@
       }
     },
     {
-      "name": "(2) W_g < k: three live grants at k = 3 sign alone",
+      "name": "(2) W_g < k: four live grants at k = 4 sign alone; (6) and the cap cannot both hold here, because (6) implies (2)",
       "violates": {
         "group": "required",
         "constraint": "2"
       },
       "membership": {
-        "k": 3,
+        "k": 4,
         "T": 2,
         "s": 1,
+        "W_cap": 4,
         "trusted_devices": [
           "D1"
         ],
         "co_signers": [
           "C1",
-          "C2"
+          "C2",
+          "C3"
         ],
         "grants": [
           {
@@ -78,6 +84,10 @@
           {
             "party": "G3",
             "weight": 1
+          },
+          {
+            "party": "G4",
+            "weight": 1
           }
         ]
       },
@@ -89,12 +99,14 @@
           "T>1": true,
           "T<k": true,
           "D>=1": true,
-          "w<T": true
+          "w<T": true,
+          "W_g<=W_cap": true
         },
         "required": {
           "1": true,
           "2": false,
-          "3": true
+          "3": true,
+          "6": false
         },
         "optional": {
           "4": true,
@@ -105,27 +117,30 @@
           "grants": {
             "G1": 0,
             "G2": 0,
-            "G3": 0
+            "G3": 0,
+            "G4": 0
           }
         }
       }
     },
     {
-      "name": "(3) T + n_s - s >= k: §4.5's closing trade, one co-signer at s = 1",
+      "name": "(3) T + n_s - s >= k: §4.5's closing trade, two co-signers at s = 1",
       "violates": {
         "group": "required",
         "constraint": "3"
       },
       "membership": {
-        "k": 3,
+        "k": 4,
         "T": 2,
         "s": 1,
+        "W_cap": 1,
         "trusted_devices": [
           "D1",
           "D2"
         ],
         "co_signers": [
-          "C1"
+          "C1",
+          "C2"
         ],
         "grants": [
           {
@@ -142,12 +157,14 @@
           "T>1": true,
           "T<k": true,
           "D>=1": true,
-          "w<T": true
+          "w<T": true,
+          "W_g<=W_cap": true
         },
         "required": {
           "1": true,
           "2": true,
-          "3": false
+          "3": false,
+          "6": true
         },
         "optional": {
           "4": true,
@@ -171,6 +188,7 @@
         "k": 5,
         "T": 2,
         "s": 1,
+        "W_cap": 2,
         "trusted_devices": [
           "D1",
           "D2"
@@ -191,12 +209,14 @@
           "T>1": true,
           "T<k": true,
           "D>=1": true,
-          "w<T": true
+          "w<T": true,
+          "W_g<=W_cap": true
         },
         "required": {
           "1": true,
           "2": true,
-          "3": true
+          "3": true,
+          "6": true
         },
         "optional": {
           "4": false,
@@ -218,6 +238,7 @@
         "k": 5,
         "T": 2,
         "s": 1,
+        "W_cap": 2,
         "trusted_devices": [
           "D1",
           "D2",
@@ -239,12 +260,14 @@
           "T>1": true,
           "T<k": true,
           "D>=1": true,
-          "w<T": true
+          "w<T": true,
+          "W_g<=W_cap": true
         },
         "required": {
           "1": true,
           "2": true,
-          "3": true
+          "3": true,
+          "6": true
         },
         "optional": {
           "4": false,
@@ -253,6 +276,66 @@
         "slack": {
           "trusted_device": 1,
           "grants": {}
+        }
+      }
+    },
+    {
+      "name": "(6) T + W_cap < k: Appendix C, the former k = 3 reference, where one trusted device and one self-issued grant reach k",
+      "violates": {
+        "group": "required",
+        "constraint": "6"
+      },
+      "membership": {
+        "k": 3,
+        "T": 2,
+        "s": 1,
+        "W_cap": 2,
+        "trusted_devices": [
+          "D1",
+          "D2"
+        ],
+        "co_signers": [
+          "C1",
+          "C2"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          },
+          {
+            "party": "G2",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 1,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true,
+          "W_g<=W_cap": true
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true,
+          "6": false
+        },
+        "optional": {
+          "4": true,
+          "5": false
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0,
+            "G2": 0
+          }
         }
       }
     },
@@ -266,6 +349,7 @@
         "k": 2,
         "T": 2,
         "s": 0,
+        "W_cap": 0,
         "trusted_devices": [
           "D1"
         ],
@@ -282,12 +366,14 @@
           "T>1": true,
           "T<k": false,
           "D>=1": true,
-          "w<T": true
+          "w<T": true,
+          "W_g<=W_cap": true
         },
         "required": {
           "1": true,
           "2": true,
-          "3": true
+          "3": true,
+          "6": false
         },
         "optional": {
           "4": true,
@@ -300,15 +386,16 @@
       }
     },
     {
-      "name": "§2.2 N <= 255: 127 trusted devices and two co-signers reach index 256",
+      "name": "§2.2 N <= 255: 126 trusted devices, three co-signers and one grant reach index 256",
       "violates": {
         "group": "precondition",
         "constraint": "N<=255"
       },
       "membership": {
-        "k": 3,
+        "k": 4,
         "T": 2,
         "s": 1,
+        "W_cap": 1,
         "trusted_devices": [
           "D1",
           "D2",
@@ -435,14 +522,19 @@
           "D123",
           "D124",
           "D125",
-          "D126",
-          "D127"
+          "D126"
         ],
         "co_signers": [
           "C1",
-          "C2"
+          "C2",
+          "C3"
         ],
-        "grants": []
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          }
+        ]
       },
       "expect": {
         "exit": 1,
@@ -452,12 +544,14 @@
           "T>1": true,
           "T<k": true,
           "D>=1": true,
-          "w<T": true
+          "w<T": true,
+          "W_g<=W_cap": true
         },
         "required": {
           "1": true,
           "2": true,
-          "3": true
+          "3": true,
+          "6": true
         },
         "optional": {
           "4": true,
@@ -465,7 +559,9 @@
         },
         "slack": {
           "trusted_device": 1,
-          "grants": {}
+          "grants": {
+            "G1": 0
+          }
         }
       }
     },
@@ -479,6 +575,7 @@
         "k": 3,
         "T": 1,
         "s": 0,
+        "W_cap": 0,
         "trusted_devices": [
           "D1"
         ],
@@ -496,12 +593,14 @@
           "T>1": false,
           "T<k": true,
           "D>=1": true,
-          "w<T": true
+          "w<T": true,
+          "W_g<=W_cap": true
         },
         "required": {
           "1": true,
           "2": true,
-          "3": true
+          "3": true,
+          "6": true
         },
         "optional": {
           "4": false,
@@ -514,7 +613,7 @@
       }
     },
     {
-      "name": "§4.3 T < k: a trusted device of weight k signs alone and §6 never runs",
+      "name": "§4.3 T < k: a trusted device of weight k signs alone and §6 never runs; (6) fails with it",
       "violates": {
         "group": "precondition",
         "constraint": "T<k"
@@ -523,6 +622,7 @@
         "k": 3,
         "T": 3,
         "s": 0,
+        "W_cap": 0,
         "trusted_devices": [
           "D1"
         ],
@@ -540,12 +640,14 @@
           "T>1": true,
           "T<k": false,
           "D>=1": true,
-          "w<T": true
+          "w<T": true,
+          "W_g<=W_cap": true
         },
         "required": {
           "1": true,
           "2": true,
-          "3": true
+          "3": true,
+          "6": false
         },
         "optional": {
           "4": true,
@@ -567,6 +669,7 @@
         "k": 5,
         "T": 2,
         "s": 1,
+        "W_cap": 2,
         "trusted_devices": [
           "D1"
         ],
@@ -591,12 +694,14 @@
           "T>1": true,
           "T<k": true,
           "D>=1": true,
-          "w<T": false
+          "w<T": false,
+          "W_g<=W_cap": true
         },
         "required": {
           "1": true,
           "2": true,
-          "3": true
+          "3": true,
+          "6": true
         },
         "optional": {
           "4": false,
@@ -617,13 +722,15 @@
         "constraint": "D>=1"
       },
       "membership": {
-        "k": 3,
+        "k": 4,
         "T": 2,
-        "s": 0,
+        "s": 1,
+        "W_cap": 1,
         "trusted_devices": [],
         "co_signers": [
           "C1",
-          "C2"
+          "C2",
+          "C3"
         ],
         "grants": [
           {
@@ -640,12 +747,14 @@
           "T>1": true,
           "T<k": true,
           "D>=1": false,
-          "w<T": true
+          "w<T": true,
+          "W_g<=W_cap": true
         },
         "required": {
           "1": true,
           "2": true,
-          "3": true
+          "3": true,
+          "6": true
         },
         "optional": {
           "4": true,
@@ -655,6 +764,66 @@
           "trusted_device": 1,
           "grants": {
             "G1": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "§4.2 W_g <= W_cap: two live grants where the co-signers cap grant weight at 1",
+      "violates": {
+        "group": "precondition",
+        "constraint": "W_g<=W_cap"
+      },
+      "membership": {
+        "k": 4,
+        "T": 2,
+        "s": 1,
+        "W_cap": 1,
+        "trusted_devices": [
+          "D1"
+        ],
+        "co_signers": [
+          "C1",
+          "C2",
+          "C3"
+        ],
+        "grants": [
+          {
+            "party": "G1",
+            "weight": 1
+          },
+          {
+            "party": "G2",
+            "weight": 1
+          }
+        ]
+      },
+      "expect": {
+        "exit": 1,
+        "preconditions": {
+          "k>=3": true,
+          "N<=255": true,
+          "T>1": true,
+          "T<k": true,
+          "D>=1": true,
+          "w<T": true,
+          "W_g<=W_cap": false
+        },
+        "required": {
+          "1": true,
+          "2": true,
+          "3": true,
+          "6": true
+        },
+        "optional": {
+          "4": true,
+          "5": false
+        },
+        "slack": {
+          "trusted_device": 1,
+          "grants": {
+            "G1": 0,
+            "G2": 0
           }
         }
       }

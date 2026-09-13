@@ -2,7 +2,7 @@
   "spec": "TIERS.md",
   "version": "1.0-draft",
   "section": "4.4, 4.5",
-  "description": "Profile A's reference configuration (§4.4) as a membership, with every minimal authorised signing set of §4.5 in the table's own order. The constraint results and slacks follow from §4.2 and §4.6 by hand; the sets are transcribed from §4.5, with each row's number and description kept so a reader can check them against the table.",
+  "description": "Profile A's reference configuration (§4.4: k = 4, T = 2, three co-signers, W_cap = 1, s = 1) as a membership with two trusted devices and its one live grant, with every minimal authorised signing set of §4.5 in the table's own order. The constraint results and slacks follow from §4.2 and §4.6 by hand; the sets are transcribed from §4.5, with each row's number, label and description kept so a reader can check them against the table.",
   "labels": {
     "no-co-signer": "No co-signer in the set: §6 policy never runs.",
     "collusion": "A co-signer and no trusted device.",
@@ -11,26 +11,24 @@
   },
   "cases": [
     {
-      "name": "§4.4 reference: two trusted devices, two co-signers, two live grants",
+      "name": "§4.4 reference: two trusted devices, three co-signers, one live grant",
       "membership": {
-        "k": 3,
+        "k": 4,
         "T": 2,
         "s": 1,
+        "W_cap": 1,
         "trusted_devices": [
           "D1",
           "D2"
         ],
         "co_signers": [
           "C1",
-          "C2"
+          "C2",
+          "C3"
         ],
         "grants": [
           {
             "party": "G1",
-            "weight": 1
-          },
-          {
-            "party": "G2",
             "weight": 1
           }
         ]
@@ -43,12 +41,14 @@
           "T>1": true,
           "T<k": true,
           "D>=1": true,
-          "w<T": true
+          "w<T": true,
+          "W_g<=W_cap": true
         },
         "required": {
           "1": true,
           "2": true,
-          "3": true
+          "3": true,
+          "6": true
         },
         "optional": {
           "4": true,
@@ -57,8 +57,7 @@
         "slack": {
           "trusted_device": 1,
           "grants": {
-            "G1": 0,
-            "G2": 0
+            "G1": 0
           }
         },
         "sets": [
@@ -70,15 +69,16 @@
             ],
             "weight": 4,
             "label": "no-co-signer",
-            "what_it_is": "Two trusted devices. The recovery path of (4); no server, no grant."
+            "what_it_is": "Two trusted devices. The recovery path of (4); no server, no grant, no §6."
           },
           {
             "table_row": 2,
             "parties": [
               "D1",
-              "C1"
+              "C1",
+              "C2"
             ],
-            "weight": 3,
+            "weight": 4,
             "label": "trusted",
             "what_it_is": "Ordinary signing from a trusted device."
           },
@@ -86,115 +86,134 @@
             "table_row": 3,
             "parties": [
               "D1",
-              "C2"
+              "C1",
+              "C3"
             ],
-            "weight": 3,
+            "weight": 4,
             "label": "trusted",
-            "what_it_is": "Ordinary signing from a trusted device, the other co-signer."
+            "what_it_is": "As 2, another pair of co-signers."
           },
           {
             "table_row": 4,
             "parties": [
-              "D2",
-              "C1"
+              "D1",
+              "C2",
+              "C3"
             ],
-            "weight": 3,
+            "weight": 4,
             "label": "trusted",
-            "what_it_is": "Ordinary signing from the second trusted device."
+            "what_it_is": "As 2, the third pair — the one that signs while C1 is down."
           },
           {
             "table_row": 5,
             "parties": [
               "D2",
+              "C1",
               "C2"
             ],
-            "weight": 3,
+            "weight": 4,
             "label": "trusted",
-            "what_it_is": "Ordinary signing from the second trusted device, the other co-signer."
+            "what_it_is": "Ordinary signing from the second trusted device."
           },
           {
             "table_row": 6,
             "parties": [
-              "D1",
-              "G1"
+              "D2",
+              "C1",
+              "C3"
             ],
-            "weight": 3,
-            "label": "no-co-signer",
-            "what_it_is": "A grant finishing against a trusted device, no co-signer reachable."
+            "weight": 4,
+            "label": "trusted",
+            "what_it_is": "As 5, another pair of co-signers."
           },
           {
             "table_row": 7,
             "parties": [
-              "D1",
-              "G2"
+              "D2",
+              "C2",
+              "C3"
             ],
-            "weight": 3,
-            "label": "no-co-signer",
-            "what_it_is": "As 6, the other grant."
+            "weight": 4,
+            "label": "trusted",
+            "what_it_is": "As 5, the third pair."
           },
           {
             "table_row": 8,
             "parties": [
-              "D2",
+              "D1",
+              "C1",
               "G1"
             ],
-            "weight": 3,
-            "label": "no-co-signer",
-            "what_it_is": "As 6, the other trusted device."
+            "weight": 4,
+            "label": "mixed",
+            "what_it_is": "The grant finishing against a trusted device, one co-signer checking it."
           },
           {
             "table_row": 9,
             "parties": [
-              "D2",
-              "G2"
+              "D1",
+              "C2",
+              "G1"
             ],
-            "weight": 3,
-            "label": "no-co-signer",
-            "what_it_is": "As 6, the other trusted device and grant."
+            "weight": 4,
+            "label": "mixed",
+            "what_it_is": "As 8, another co-signer."
           },
           {
             "table_row": 10,
             "parties": [
-              "C1",
-              "C2",
+              "D1",
+              "C3",
               "G1"
             ],
-            "weight": 3,
-            "label": "collusion",
-            "what_it_is": "Collusion. One grant plus both co-signers. No trusted device."
+            "weight": 4,
+            "label": "mixed",
+            "what_it_is": "As 8, the third co-signer."
           },
           {
             "table_row": 11,
             "parties": [
+              "D2",
               "C1",
-              "C2",
-              "G2"
+              "G1"
             ],
-            "weight": 3,
-            "label": "collusion",
-            "what_it_is": "Collusion. As 10, the other grant."
+            "weight": 4,
+            "label": "mixed",
+            "what_it_is": "As 8, the second trusted device."
           },
           {
             "table_row": 12,
             "parties": [
-              "C1",
-              "G1",
-              "G2"
+              "D2",
+              "C2",
+              "G1"
             ],
-            "weight": 3,
-            "label": "collusion",
-            "what_it_is": "Collusion. Two grants plus one co-signer. No trusted device."
+            "weight": 4,
+            "label": "mixed",
+            "what_it_is": "As 11, another co-signer."
           },
           {
             "table_row": 13,
             "parties": [
-              "C2",
-              "G1",
-              "G2"
+              "D2",
+              "C3",
+              "G1"
             ],
-            "weight": 3,
+            "weight": 4,
+            "label": "mixed",
+            "what_it_is": "As 11, the third co-signer."
+          },
+          {
+            "table_row": 14,
+            "parties": [
+              "C1",
+              "C2",
+              "C3",
+              "G1"
+            ],
+            "weight": 4,
             "label": "collusion",
-            "what_it_is": "Collusion. As 12, the other co-signer."
+            "what_it_is": "The grant with every co-signer and no trusted device. How the grant signs phone-free under honest co-signers; collusion if all three abandon §6."
           }
         ]
       }

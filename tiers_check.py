@@ -5,19 +5,21 @@
 
 A membership is the current epoch, not just its parameters:
 
-    {"k": 3, "T": 2, "s": 1,
+    {"k": 4, "T": 2, "s": 1, "W_cap": 1,
      "trusted_devices": ["D1", "D2"],
-     "co_signers": ["C1", "C2"],
-     "grants": [{"party": "G1", "weight": 1}, {"party": "G2", "weight": 1}]}
+     "co_signers": ["C1", "C2", "C3"],
+     "grants": [{"party": "G1", "weight": 1}]}
 
 `s` is the slack constraint (3) is checked at, as §4.4 and §4.6 declare it; it
-defaults to 0. Trusted devices weigh `T` and co-signers 1 (§3.1, §3.2); a grant
-weighs what it says.
+defaults to 0. `W_cap` is the co-signer-enforced cap on total live grant weight and
+is required. Trusted devices weigh `T` and co-signers 1 (§3.1, §3.2); a grant weighs
+what it says.
 
-Constraints (1)-(3) are required (§4.2); (4) is optional and on by default (§3.5);
-(5) is §4.6's condition that every signing set contains a co-signer. The script also
-checks the MUSTs the four inequalities assume: k >= 3 and N <= 255 (§2.2), T > 1 (§3.1),
-T < k and every grant's weight below T (§4.3), and at least one trusted device (§3.2).
+Constraints (1), (2), (3) and (6) are required (§4.2); (4) is optional and on by
+default (§3.5); (5) is §4.6's condition that every signing set contains a co-signer.
+The script also checks the MUSTs the inequalities assume: k >= 3 and N <= 255 (§2.2),
+T > 1 (§3.1), T < k and every grant's weight below T (§4.3), at least one trusted
+device (§3.2), and live grant weight within W_cap (§4.2).
 
 Slack for a trusted device is T + n_s - k: how many co-signers may be down while one
 trusted device still signs with the rest (§4.3). Slack for a grant is w + n_s - k, the
@@ -50,6 +52,9 @@ def load(path):
     s = m.get("s", 0)
     if type(s) is not int or s < 0:
         raise ValueError("s must be a non-negative integer")
+    W_cap = m.get("W_cap")
+    if type(W_cap) is not int or W_cap < 0:
+        raise ValueError("W_cap must be a non-negative integer")
     parties = []
     for name in m.get("trusted_devices", []):
         parties.append((name, TRUSTED, m["T"]))
@@ -64,7 +69,7 @@ def load(path):
         raise ValueError("every party needs a non-empty string name")
     if len(set(names)) != len(names):
         raise ValueError("party names must be unique across tiers")
-    return m["k"], m["T"], s, parties
+    return m["k"], m["T"], s, W_cap, parties
 
 def minimal_sets(k, parties):
     """Every authorised set with no authorised proper subset.
@@ -94,7 +99,7 @@ def label(tiers):
     if GRANT in tiers:        return "mixed"
     return "trusted"
 
-def check(k, T, s, parties):
+def check(k, T, s, W_cap, parties):
     D   = sum(1 for p in parties if p[1] == TRUSTED)
     n_s = sum(1 for p in parties if p[1] == COSIGNER)
     grants = [p for p in parties if p[1] == GRANT]
@@ -112,11 +117,14 @@ def check(k, T, s, parties):
     heavy = [p for p in grants if p[2] >= T]
     rows.append(("precondition", "w<T", "§4.3", "every grant weight < T",
                  ", ".join(f"{p[0]} w={p[2]}" for p in heavy) or "all below T", not heavy))
+    rows.append(("precondition", "W_g<=W_cap", "§4.2", "W_g <= W_cap", f"{W_g} <= {W_cap}", W_g <= W_cap))
     rows += [
         ("required", "1", "§4.2", "n_s < k", f"{n_s} < {k}", n_s < k),
         ("required", "2", "§4.2", "W_g < k", f"{W_g} < {k}", W_g < k),
         ("required", "3", "§4.2", "T + n_s - s >= k",
          f"{T} + {n_s} - {s} = {T + n_s - s} >= {k}", T + n_s - s >= k),
+        ("required", "6", "§4.2", "T + W_cap < k",
+         f"{T} + {W_cap} = {T + W_cap} < {k}", T + W_cap < k),
         ("optional", "4", "§4.2", "2T >= k", f"2*{T} = {2 * T} >= {k}", 2 * T >= k),
         ("optional", "5", "§4.6", "D*T + W_g < k",
          f"{D}*{T} + {W_g} = {D * T + W_g} < {k}", D * T + W_g < k),
@@ -133,7 +141,7 @@ def check(k, T, s, parties):
     def group(g):
         return {r[1]: r[5] for r in rows if r[0] == g}
     return {
-        "k": k, "T": T, "s": s, "D": D, "n_s": n_s, "W_g": W_g, "N": N,
+        "k": k, "T": T, "s": s, "W_cap": W_cap, "D": D, "n_s": n_s, "W_g": W_g, "N": N,
         "preconditions": group("precondition"),
         "required": group("required"),
         "optional": group("optional"),
@@ -146,7 +154,7 @@ def check(k, T, s, parties):
     }
 
 def report(r):
-    out = [f"k={r['k']} T={r['T']} s={r['s']}   D={r['D']} n_s={r['n_s']} "
+    out = [f"k={r['k']} T={r['T']} s={r['s']} W_cap={r['W_cap']}   D={r['D']} n_s={r['n_s']} "
            f"W_g={r['W_g']} N={r['N']}"]
     for g, title in (("precondition", "preconditions"),
                      ("required", "required constraints"),

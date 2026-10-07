@@ -248,8 +248,8 @@ Each milestone is useful to somebody on its own, which matters when the author
 count is one.
 
 **v0.1 — the actual drop-in.** NKM §2 storage ladder with silent probing and
-in-place upgrade; QRST Flow A and B over relays; the typed code and its attempt
-budget; the multiple-responder notice; NKM §4.1 `ncryptsec` export (which is also
+in-place upgrade; QRST Flow A and B over relays; the code check at the profile's
+level (§9.2) and its attempt budget; the multiple-responder notice; NKM §4.1 `ncryptsec` export (which is also
 `nostr-nsec`'s no-network path — the QRST §10 offline tier is profile-gated and
 `nostr-nsec` does not use it); NIP-07 signer; tier 0 bundle. No server, no account,
 nothing to run.

@@ -54,9 +54,12 @@ is running it over infrastructure nobody operates for the purpose.
 
 ## Status
 
-QR_SECRET_TRANSFER.md is version 1.4-draft: the `frost://` scheme and light
-returned-secret flow (§12.3) for revocable shares, plus a profile-gated offline
-tier (§10) — passphrase-encrypted, no relay. The event kinds are provisional —
+QR_SECRET_TRANSFER.md is version 1.5-draft: three levels of checking the short
+code — type it, compare it, or none for revocable payloads (§9.2) — a one-time
+token in every QR (§11.2), the `frost://` scheme (§12.3), and a profile-gated
+offline tier (§10) — passphrase-encrypted, no relay. A reference implementation
+and live demo are at
+[sybenx/qr-secret-transfer](https://github.com/sybenx/qr-secret-transfer). The event kinds are provisional —
 chosen from the ephemeral range and verified non-conflicting, but not yet reserved
 by a NIP — and the test vectors are incomplete: the §6 short code is covered in
 [vectors/](vectors/), the payload ceiling that P1 requires is not.

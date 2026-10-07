@@ -208,6 +208,7 @@ Registered against QRST §5. Moves a whole identity key.
 | P5 rendering | Derive the npub, resolve a display name if cached, ask **"Log in as @name?"** |
 | §5 prompt wording | "Send your key to *X*." The prompt MUST state that this is the identity itself and cannot be undone: there is no rotation in Nostr, and a party that receives this key keeps a working copy permanently. |
 | Additional tags | `lock`, `enroll` — below. |
+| Lowest check level (QRST §9.2) | `type`. The key is irreversible, so the user types the digits; a client MAY also offer capture. |
 
 **`lock` tag**, on the payload message: `["lock", "<device|launch|idle:N>"]`.
 
@@ -237,7 +238,7 @@ does permit it — §3.3).
 - A device that received its key by transfer defaults to **receive-only**. The
   toggle is one tap, unguarded, shown inline. Per QRST §14 it expires.
 - Every transfer writes a local record
-  `transfer_event { ts, profile, transport, sas, peer_burner, multi }`.
+  `transfer_event { ts, profile, transport, sas, peer_burner, check, multi }`.
 - There is no remote revocation in base mode. A "devices" list, if shown, MUST
   label removal as deleting the local copy only.
 
@@ -256,6 +257,7 @@ which, and the paste-delivered form uses the `frost://` carrier of QRST §12.3.
 | P5 rendering | The identity the share belongs to, and that this device will hold **one share, not the key** — it cannot sign alone, and cannot sign at all until admitted (§7.1). For a quorum share it also names that two of your devices must be present to sign. |
 | §5 prompt wording | "Give *X* a share of your key." Materially less severe than `nostr-nsec`: a share alone signs nothing, and the device can be revoked. |
 | Additional tags | `enroll`, as above. |
+| Lowest check level (QRST §9.2) | `none`, but only over a channel the Sender controls — its own camera, or a local same-user paste. Over any other channel, `compare`. See QRST §12.3. |
 | Offline tier (QRST §10) | Permitted, as the passphrase-encrypted container below. A raw, unencrypted share MUST NOT be shown or pasted. |
 
 > **One Sender, either shard type.** The co-signer replica is a copy from one
@@ -287,7 +289,7 @@ profile therefore defines its own container over NIP-49's construction:
 The receiver decrypts, verifies `share·G == group_pub + commitment·index`, renders
 P5, and confirms (QRST §10 step 3). Offline delivery has no admission-independent
 gate beyond the passphrase, so it inherits the same reconstruction caveat as the
-§12.3 light flow: an intercepted blob whose passphrase is guessed, plus one other
+share sent at QRST's `none` level (§12.3): an intercepted blob whose passphrase is guessed, plus one other
 share, is the key.
 
 ---
@@ -760,10 +762,11 @@ the device list with the new `E.pub`, `admitted: false`.
 a trusted device or the server console, where the user sees the device by label.
 That admission gates *signing*, not *reconstruction*: an intercepted share plus one
 other share (share 1, §7.12) is the key, and revocation does not undo a
-reconstruction. So the enrollment channel is load-bearing. The transfer uses the SAS
-(§6) unless the token reached the Receiver by a channel the user controls — its own
-camera, or a local same-user paste — in which case the §12.3 light flow's returned
-secret suffices. `nostr-nsec`, being irreversible, always uses the SAS.
+reconstruction. So the enrollment channel is load-bearing. The transfer checks the
+SAS (§6) at `compare` or `type` unless the pairing URI reached the Receiver by a
+channel the user controls — its own camera, or a local same-user paste — in which
+case QRST's `none` level (§12.3), with its token, suffices. `nostr-nsec`, being
+irreversible, always uses `type`.
 
 Only trusted devices may act as Sender.
 
@@ -1059,8 +1062,9 @@ and QRST still sees one Sender:
    because those two already reconstruct in this trust model, so nothing is exposed
    between them that the model did not already grant.
 2. That device is the QRST Sender and delivers the finished `share_k` to the joining
-   device as a single `frost-share` QRST payload (kind 24405) — under the SAS, or the
-   §12.3 light flow (`frost://`) over a controlled channel, exactly as §7.7. The
+   device as a single `frost-share` QRST payload (kind 24405) — with the SAS checked,
+   or at QRST's `none` level (`frost://`, §12.3) over a controlled channel, exactly
+   as §7.7. The
    joining device verifies `share_k·G == group_pub + commitment·k`, stores it
    `admitted: false`, and is admitted by a trusted device (§7.1).
 

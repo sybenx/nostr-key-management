@@ -513,6 +513,100 @@ fewest that meet your availability need."
 
 ## Resolved
 
+The entries from here to the next horizontal rule were found while building the
+reference implementation of QRST
+([sybenx/qr-secret-transfer](https://github.com/sybenx/qr-secret-transfer)), and
+are resolved in QR_SECRET_TRANSFER.md 1.5-draft.
+
+### The contacting party gets more than one code per session
+
+**Document:** QR_SECRET_TRANSFER.md · **Section:** §6, §13 · **Kind:** suspected error
+
+1.4 §6 said a party in the middle "gets one attempt per session". The contacting
+party learns the other's nonce before revealing its own, so it knows the code
+first, and can walk away and contact again from a fresh burner. With §13's caps it
+got three or five codes per session; with a cap counted on candidates *currently
+held*, unlimited. The implementation's first version did exactly that, and review
+demonstrated a hundred codes from one burner in one session.
+
+Resolved in §6 and §13: one nonce exchange per burner, ever; caps count every
+contact over the session; §6 states the bound as the cap over 100 000. Lowering the
+caps, or having the showing party commit first, is left open in Status.
+
+### The burner key is not secret, so anyone reading a relay can respond
+
+**Document:** QR_SECRET_TRANSFER.md · **Section:** §11.2, §11.3a, §13 · **Kind:** suspected error
+
+The showing party publishes and subscribes with its burner key on the relays its
+QR names, so a reader of those relays can contact the session without seeing the
+QR. At `type` that only uses up §13's cap; at a level with no code it would win the
+payload.
+
+Resolved in §11.2 and §11.4: every QR carries a one-time `token`, echoed inside the
+first sealed message; a contact without it is not a responder.
+
+### One check level for every payload
+
+**Document:** QR_SECRET_TRANSFER.md · **Section:** §9.2, §12.3 · **Kind:** design disagreement
+
+1.4 allowed only a typed or captured code, plus the light flow for one profile.
+How much checking a transfer deserves depends on what is moving.
+
+Resolved in §9.2: `none`, `compare` and `type`, agreed per pairing as the stricter
+of the two parties' settings, with a profile minimum (§5). The light flow is now
+the `none` level.
+
+### What ends a session when a candidate sends ABORT
+
+**Document:** QR_SECRET_TRANSFER.md · **Section:** §13 · **Kind:** suspected error
+
+§13 forbade a *later* responder from aborting the session, for fear of denial by
+one forged message. The same holds for the first: a stranger who answers first and
+then sends ABORT denied the session just as well.
+
+The same held for a Receiver that showed the QR and declined a payload: §7 step 17
+said "discard all, abort", so a stranger who answered first and sent something
+ended the session by being declined.
+
+Resolved in §7 and §13: at `compare` and `type` no responder ends the session for
+the device that showed the QR, by ABORT or by a declined payload; the Receiver
+drops that candidate and moves on.
+
+### Flow B: what a typed code is compared against, and what declining does
+
+**Document:** QR_SECRET_TRANSFER.md · **Section:** §8, §9.2 · **Kind:** ambiguity
+
+"Works one candidate at a time" and "a value matching none of its held candidates
+advances" admitted comparing with the active candidate only, or with all of them.
+
+Resolved in §8 and §9.2: at `type`, compare with every ready candidate; exactly one
+match releases, more than one is a miss. Declining ends the session.
+
+### Flow A: who advances the Receiver's display, and which payload it may keep
+
+**Document:** QR_SECRET_TRANSFER.md · **Section:** §7 steps 12 and 16, §9.4, §13 · **Kind:** ambiguity
+
+The miss happens on the Sender, which transmits neither the code nor the result, so
+the Receiver cannot know to advance or which candidate "the Sender confirmed".
+
+Resolved in §9.4 and §13: the user tells the Receiver to show the next code; the
+Receiver keeps only a payload from the candidate whose code is on screen, and drops
+one from a candidate whose code was never shown.
+
+### Smaller readings
+
+**Document:** QR_SECRET_TRANSFER.md · **Section:** various · **Kind:** ambiguity
+
+Resolved in 1.5: §9.2 against §14 on storing the code (completed transfers only);
+§9.3's failed session and failed burner; §11.4's timestamps (all three true) and
+window start (each party's own); §11.2's relay encoding and count; §11.6 (only the
+showing party reads NIP-11); §11.5's dedupe (after signature verification) and
+relay text (untrusted, bounded); §11.2a framing; §11.4's clock warning (only where
+a client can tell).
+
+---
+
+
 ### A failed probe can leave a browser Holder with no transport at all
 
 Resolved in [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md) §11.3, which makes the

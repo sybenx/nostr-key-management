@@ -1234,3 +1234,5 @@ A reference implementation of 1.5 is at
 <https://github.com/sybenx/qr-secret-transfer>, with a live demo at
 <https://sybenx.github.io/qr-secret-transfer/>. It has not been audited, and
 neither has this document. Review is more useful than deployment at this stage.
+Report anything this document gets wrong, or that can be read two ways, in
+[SPEC_ISSUES.md](SPEC_ISSUES.md), in the form it asks for.

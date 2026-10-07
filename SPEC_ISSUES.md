@@ -1,8 +1,13 @@
 # Specification Issues
 
-This file is the place to record disagreements with either
-[QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md) or
-[NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md). It exists because the
+**To report something, [open an issue](https://github.com/sybenx/nostr-key-management/issues/new?template=spec-issue.yml).** The form asks for the same
+fields as the format below. This file is the permanent record: entries filed here
+before issues were used, and every settled issue, with how it was resolved.
+
+This file records disagreements with
+[QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md),
+[NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md) and [TIERS.md](TIERS.md). It
+exists because the
 alternative is worse: an implementer who finds a passage ambiguous, or believes
 a requirement is wrong, will otherwise resolve it privately and ship a client
 that differs from every other client in a way nobody can see. A deviation
@@ -31,7 +36,9 @@ probably be answered by a pointer back to it.
 
 ## Format
 
-Add each entry under its own heading, newest at the bottom, using this shape:
+The issue form asks for these fields. When an issue is settled, it is recorded
+here under its own heading, newest at the bottom, in this shape, with a link to
+the issue:
 
 ```
 ### <short title>

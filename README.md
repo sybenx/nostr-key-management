@@ -73,6 +73,7 @@ This project benefits from devs and users pressure testing the claims of the
 spec. Failure modes will be handled within reason to improve it. Structural
 robustness increases the convenience and security of users as far as the spec is
 widely deployed and followed, across various hardware and software conditions.
-Disagreements and suspected errors belong in
-[SPEC_ISSUES.md](SPEC_ISSUES.md); pull requests and issue submissions should be
-used where possible.
+Disagreements and suspected errors belong in an
+[issue](https://github.com/sybenx/nostr-key-management/issues/new?template=spec-issue.yml); the form asks for a section number and a proposed fix. Settled
+issues, and everything resolved so far, are recorded in
+[SPEC_ISSUES.md](SPEC_ISSUES.md). Pull requests are welcome too.

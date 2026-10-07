@@ -335,10 +335,12 @@ consent actions below are never waived.
 
 Before any payload is sent, the Sender MUST present a prompt that:
 
-1. Names what is being sent, in the profile's words (§5, item 5). It MUST state
-   that the secret itself leaves this device — not a session, not a revocable
-   permission. Where the profile's secret cannot be revoked once released, the
-   prompt MUST say so.
+1. Names what is being sent, in the profile's words (§5, item 5). Where the
+   profile's secret cannot be revoked once released, the prompt MUST say so, and
+   MUST state that the secret itself leaves this device — not a session, not a
+   revocable permission. Where it can be revoked, the prompt MUST NOT claim more
+   than the software does: revoking stops future use and recalls nothing the
+   other device has already read or done.
 2. Names what the other party claims to be: for a browser, its origin; otherwise
    that it is a native application. These are unverified claims. Origins
    containing non-ASCII MUST be shown as punycode.
@@ -376,6 +378,9 @@ the Sender by a pasted request rather than a scanned code — would otherwise be
 handled as native merely because it declared no origin. Its nature is
 unestablished, so it gets the maximum.
 
+A revocable payload draws the same tier as any other. It is usable from the
+moment of release, so being able to withdraw it later lowers nothing here.
+
 **Authorisation is scoped to one session and MUST NOT outlive it.** Consent, and
 any platform credential or biometric check a profile requires alongside it (§5),
 authorise exactly one transfer session. They MUST NOT be remembered, defaulted,
@@ -388,7 +393,7 @@ which further transfers proceed unchallenged.
 verify it locally — regardless of which party showed the QR.** The direction is
 invariant: the Receiver displays, the Sender reads and compares. It is never the
 Receiver that types a code the Sender shows. The Sender is the party performing the
-irreversible release, so the Sender is the party that must actively prove it read
+release, so the Sender is the party that must actively prove it read
 the other screen; a code entered on the Sender and matched against the Sender's own
 computed value is that proof. Both flows (§7, §8) display on the Receiver and enter
 on the Sender for this reason.
@@ -900,8 +905,9 @@ decrypt; and messages discarded by the session-window test of §11.4.
   setting.
 - Every transfer MUST write a local record: timestamp, profile, transport, SAS,
   peer burner, and the multiple-responder flag.
-- This mechanism has no remote revocation. A device list, if shown, MUST label
-  removal as deleting the local copy only.
+- This mechanism has no remote revocation of its own. A device list, if shown,
+  MUST label removal as deleting the local copy only, unless the control performs
+  a revocation the profile's own system provides and reports that it succeeded.
 
 ## 15. Security properties and residual risks
 
@@ -963,7 +969,10 @@ source of the commit-then-reveal construction of §6, by way of Matrix.
 Version 1.4-draft. 1.3 added the `frost://` scheme and the light returned-secret
 flow of §12.3; 1.4 restores the offline tier (§10) as a profile-gated,
 passphrase-encrypted fallback — `frost-share` permits it, `nostr-nsec` does not
-(it has `ncryptsec`). Two things are still open: the event kinds of §11.4 are
+(it has `ncryptsec`). The consent and device-list wording of §9.1 and §14 no
+longer assume the payload is irrevocable, so a revocable secret — a session, an
+API key — is carried on the same terms. Two things are still open: the event
+kinds of §11.4 are
 provisional — chosen from the ephemeral range and verified non-conflicting
 (2026-09-02), but not yet reserved by a NIP — and the test vectors are incomplete:
 the SAS of §6 is covered in `vectors/`, but the one at the declared payload maximum

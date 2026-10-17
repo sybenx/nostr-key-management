@@ -1,6 +1,6 @@
 # QR Secret Transfer — Specification
 
-Version 1.5-draft
+Version 1.6-draft
 Applies to: any two devices moving a secret between them under user supervision
 
 Key words MUST, MUST NOT, SHOULD, MAY are normative.
@@ -638,8 +638,8 @@ section and nothing else.
 | T5 sender attribution | the seal (kind 13) is signed by the sending burner |
 | T6 capacity | §11.6 |
 | T7 untrusted operator | relays cannot forge a seal signature |
-| T8 expiry | NIP-40 `expiration` tag, advisory only; see §11.4 |
-| T9 liveness | relay subscription for the session's duration |
+| T8 expiry | kind 21059, which relays MUST NOT store (NIP-59 §4); NIP-40 `expiration` as a backstop where a relay stores it anyway; the receiver's window check on the rumor's own timestamp (§11.4) |
+| T9 liveness | relay subscription for the session's duration, with re-sending (§11.5) |
 
 NIP-59's `created_at` randomisation maps to no row above and is **not** used; see
 §11.4.
@@ -782,7 +782,10 @@ subscription filtering on a key it has never seen, and carries a payload of the
 declared size. It does not prove that a second connection, from the peer, will be
 served the same way. The showing party also reads NIP-11 (§11.6) and
 skips a relay whose advertised limits cannot carry that payload. The loopback event
-is never treated as a message of the session.
+is never treated as a message of the session. The loopback wrap is of the session's
+kind (§11.4), and each relay tested SHOULD get a probe made at the time of its test:
+selection can run for minutes, and a relay may refuse an ephemeral event more than
+60 s old.
 
 Candidates SHOULD be tested in this order, a batch at a time, until enough pass
 (implementations SHOULD aim for two or three, and name at most four):
@@ -852,20 +855,28 @@ field into the commit and the SAS (§6). Messages carry no version tag. One sess
 carries one PAYLOAD; there is no side-channel for additional profile messages (P2).
 
 These are unsigned rumors. **Every one of them** is sealed — kind 13, signed by
-the sending burner, NIP-44 to the recipient burner — and gift-wrapped — kind 1059,
-random one-time signing key, `p` tag set to the recipient burner. There are no
-exceptions.
+the sending burner, NIP-44 to the recipient burner — and gift-wrapped as an
+**ephemeral gift wrap** — kind 21059 (NIP-59 §4), random one-time signing key, `p`
+tag set to the recipient burner. There are no exceptions. A client MUST NOT publish
+a session message as kind 1059, which relays store.
 
-**Timestamps.** Contrary to NIP-59, the `created_at` of the rumor, the seal and the
-wrap MUST each be the true current time rather than a randomised past value. The randomisation exists to
+**Timestamps.** Contrary to NIP-59, no `created_at` is ever a randomised past value.
+The rumor's and the seal's are the true time the message was first sent; the wrap's
+is the true time that wrap was published, which for a re-send (§11.5) is later than
+the seal's. The randomisation exists to
 obscure authoring time for asynchronous correspondents; here every wrap is
 published immediately, both parties are single-session burners, and the
 randomisation buys nothing while forcing a 48-hour subscription window and a
 second timestamp to reason about.
 
-- The wrap MUST carry `["expiration","<now + 600>"]` per NIP-40.
-- **NIP-40 is advisory and MUST NOT be relied on for enforcement.** A relay may
-  honour it, ignore it, or serve the event long after it has lapsed.
+- The wrap SHOULD carry `["expiration","<wrap created_at + 600>"]` per NIP-40.
+  NIP-40 does not apply to ephemeral events, so on a relay that honours kind 21059
+  the tag does nothing; it is there for a relay that stores 21059 anyway, which then
+  still has a reason to drop it.
+- **Neither kind 21059 nor NIP-40 may be relied on for enforcement.** A relay may
+  keep an ephemeral event for minutes (strfry keeps it about 300 s, and longer on a
+  relay that receives no further writes), ignore `expiration`, or serve the event
+  long after it has lapsed.
 - Expiry is enforced by the receiver against **the rumor's own timestamp**, which
   is the one covered by the seal signature and therefore attributable to the
   sending burner.
@@ -893,13 +904,20 @@ discarded. The sending burner appears in no other field.
 The receiving side subscribes:
 
 ```
-{"kinds":[1059], "#p":["<own burner hex>"], "since": <session start − SLACK>}
+{"kinds":[21059], "#p":["<own burner hex>"], "since": <session start − SLACK>}
 ```
 
 Dedupe by the id of an event whose signature has been verified. An id alone is not
 evidence: one relay can serve junk under a real event's id, and a client that
 remembers the id before checking the signature discards the genuine copy from
 another relay.
+
+A re-send (below) arrives under a new event id, so a client MUST also dedupe
+**rumors** by rumor id, and MUST act on a rumor at most once. A rumor that arrives
+before the message it depends on (a PAYLOAD before the REVEAL that lets the
+Receiver derive the code, which a relay serving stored events newest first can
+cause) MUST NOT be remembered as seen, so that its re-send is taken once the earlier
+message is in.
 
 Text a relay sends — `OK`, `CLOSED` and `NOTICE` messages — is chosen by the relay
 operator. A client that shows or stores it MUST bound its length and MUST NOT treat
@@ -909,12 +927,43 @@ it as anything but text.
 relay from the QR that it has an open socket to. If every relay rejects a publish
 (allowlist, paid, unknown key), the client falls back to the local path.
 
-**Clients MUST keep a session outbox.** Every message published during a session
-is retained until the session ends, and republished to each relay (a) when a
-socket to it opens, and (b) after a NIP-42 authentication with it succeeds. A
-relay may accept a socket, receive a publish, and only then demand `AUTH`, leaving
-the event discarded on a relay the peer is subscribed to. Recipients dedupe by
-event id, so replay is free.
+**Clients MUST re-send what is unanswered.** A wrap reaches only the subscriptions
+open when a relay receives it, so a message the peer was not listening for is lost
+unless it is sent again. Every message published during a session is kept in an
+outbox, and while it is **outstanding** it MUST be sent again, to every relay of the
+session:
+
+- at an interval of no more than 5 s (3 s RECOMMENDED);
+- to a relay, whenever a socket to it opens and after a NIP-42 authentication with
+  it succeeds (a relay may accept a publish and only then demand `AUTH`); and
+- SHOULD be sent again at once when the client has reason to think it was not
+  listening, such as a page returning to the foreground or the device regaining a
+  network. A socket that is down SHOULD then reconnect at once rather than wait out
+  any backoff.
+
+**Every re-send is a new wrap**: the same seal, wrapped again under a fresh
+one-time key, with `created_at` and `expiration` taken at that moment. It MUST NOT
+be the same event again: a relay holding that id answers "duplicate" and delivers
+nothing, and one may refuse an ephemeral event more than a minute old. The seal is
+reused, not remade, so a re-send needs no burner and can follow the session's end
+(below) without keeping the burner alive.
+
+A message stops being outstanding when the peer has evidently received it. The
+exchange between two burners is a strict alternation: contact (HELLO or REQUEST),
+NONCE, REVEAL, PAYLOAD, ACK. A peer can send a message at one step only after it
+has received everything sent to it at the steps before. A client that accepts a
+message from a peer at step *n* therefore stops re-sending its own messages to that
+peer at steps before *n*. An ABORT from a peer ends re-sending of everything to that
+peer. A message the client ignored as out of turn settles nothing.
+
+ACK and ABORT are answered by nothing. A client SHOULD re-send each of them for a
+bounded time after sending it (20 s RECOMMENDED, well inside the `ACK_WAIT_SECONDS`
+a Sender waits). These re-sends MAY continue after the session has ended and the
+burner has been wiped, because they reuse the seal (above). When a session ends,
+every other message in the outbox stops being outstanding.
+
+Re-sends of the same rumor do not count as further responders (§13) or further
+messages: the recipient sees one rumor.
 
 If a relay returns `auth-required`, the client authenticates with its **burner**
 under NIP-42. Neither side ever uses a long-lived identity for relay
@@ -949,9 +998,11 @@ surface and no client is required to implement or interoperate on it.
 
 Where offered: the listening party opens a WebSocket on a random port ≥ 49152 and
 advertises `_qrst._tcp` with TXT `npub=<burner npub>`; the other connects and sends
-the wrap as a single text frame containing the kind 1059 event JSON. Everything
-else — messages, seal, wrap, SAS, cleanup — is exactly the relay path, and the LAN
-is untrusted in the same way the wrap already assumes. Browsers cannot use this
+the wrap as a single text frame containing the kind 21059 event JSON. Everything
+else — messages, seal, wrap, re-sending, SAS, cleanup — is exactly the relay path,
+and the LAN is untrusted in the same way the wrap already assumes. A LAN socket is a
+live channel with no storage, so a dropped connection loses whatever was in flight,
+and the re-sending of §11.5 applies over it unchanged. Browsers cannot use this
 path in either role.
 
 ## 12. Pairing without a camera
@@ -1176,7 +1227,10 @@ candidate, or aborts if none remain.
   also carrying that identity's other traffic in a correlatable way.
 - P2's single-message rule keeps a transfer indistinguishable from ordinary
   encrypted traffic; a burst of sequenced messages between two keys that have
-  never spoken before is not.
+  never spoken before is not. Re-sending (§11.5) makes the burst denser: a relay
+  sees a fresh wrap to the same `p` tag every few seconds while a message is
+  outstanding. The wraps are unlinkable to one another except by recipient and
+  timing, which a relay could already pair.
 - Availability comes from the interchangeability of operators, not from any one of
   them. This is deployment advice, not a conformance requirement.
 - **The offline tier (§10) forfeits every transport property**; its security is the
@@ -1193,8 +1247,19 @@ source of the commit-then-reveal construction of §6, by way of Matrix.
 
 ## Status
 
-Version 1.5-draft. 1.5 is the first revision written against a running
-implementation, and folds in what building it found:
+Version 1.6-draft. 1.6 moves the wrap to kind 21059, the ephemeral gift wrap of
+NIP-59 §4 (§11.4), so that T8 no longer rests on NIP-40 alone: measured on
+2026-10-11, relays kept kind 1059 wraps well after their `expiration`, so every
+message of a session, PAYLOAD included, stayed on public relays for as long as each
+operator chose. Ephemeral delivery reaches only subscriptions open at that moment,
+so 1.6 also replaces the replay-on-reconnect outbox with re-sending until answered,
+each re-send a fresh wrap of the same seal (§11.5); §11.3a's loopback test, §11.7
+and §15 follow. A 1.5 client publishes and subscribes to 1059 and cannot pair with
+a 1.6 client; the QR's `v` is unchanged, since the kinds were already provisional
+and no interoperability was promised before a NIP.
+
+1.5 was the first revision written against a running implementation, and folded in
+what building it found:
 
 - **Three check levels** (§9.2): `type` as before, `compare`, and `none`, agreed
   per pairing as the stricter of the two parties' settings, with a profile minimum

@@ -1,5 +1,9 @@
 # Implementation Proposal
 
+> **Archived, not maintained.** This document is kept as notes; see
+> [README.md](README.md). The QR transfer specification it refers to as QRST now
+> lives at [sybenx/qr-secret-transfer](https://github.com/sybenx/qr-secret-transfer).
+
 **Status:** proposal, not agreed. Nothing here is normative; where this document
 disagrees with [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md) or
 [NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md), the specifications win.

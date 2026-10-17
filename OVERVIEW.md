@@ -1,5 +1,9 @@
 # Overview
 
+> **Archived, not maintained.** This document is kept as notes; see
+> [README.md](README.md). The QR transfer specification it refers to as QRST now
+> lives at [sybenx/qr-secret-transfer](https://github.com/sybenx/qr-secret-transfer).
+
 The readable version. [QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md) and
 [NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md) are the normative documents
 and govern wherever this disagrees with them.

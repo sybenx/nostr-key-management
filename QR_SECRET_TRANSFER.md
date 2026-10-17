@@ -954,7 +954,8 @@ NONCE, REVEAL, PAYLOAD, ACK. A peer can send a message at one step only after it
 has received everything sent to it at the steps before. A client that accepts a
 message from a peer at step *n* therefore stops re-sending its own messages to that
 peer at steps before *n*. An ABORT from a peer ends re-sending of everything to that
-peer. A message the client ignored as out of turn settles nothing.
+peer, and so does an ABORT the client sends it, apart from that ABORT itself. A
+message the client ignored as out of turn settles nothing.
 
 ACK and ABORT are answered by nothing. A client SHOULD re-send each of them for a
 bounded time after sending it (20 s RECOMMENDED, well inside the `ACK_WAIT_SECONDS`
@@ -964,6 +965,10 @@ every other message in the outbox stops being outstanding.
 
 Re-sends of the same rumor do not count as further responders (§13) or further
 messages: the recipient sees one rumor.
+
+A relay that refuses a publish as `rate-limited` SHOULD get timed re-sends less often
+for a while (backing off from about 10 s to a minute); a new message still goes to it
+at once.
 
 If a relay returns `auth-required`, the client authenticates with its **burner**
 under NIP-42. Neither side ever uses a long-lived identity for relay

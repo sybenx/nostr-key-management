@@ -1,5 +1,13 @@
 # Nostr Key Transfer & Storage — Specification
 
+> **Archived, not maintained.** This document is kept as notes; see
+> [README.md](README.md). The QR transfer specification it refers to as QRST now
+> lives at [sybenx/qr-secret-transfer](https://github.com/sybenx/qr-secret-transfer).
+>
+> §3.1 and §3.3 are superseded by the profiles
+> [`nostr-nsec`](https://github.com/sybenx/qr-secret-transfer/blob/main/profiles/nostr-nsec.md) and
+> [`frost-share`](https://github.com/sybenx/qr-secret-transfer/blob/main/profiles/frost-share.md) there.
+
 Version 9.2-draft
 Applies to: any client that holds a user's nsec (web, desktop, mobile)
 

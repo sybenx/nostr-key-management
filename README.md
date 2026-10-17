@@ -1,81 +1,46 @@
-# Nostr Key Transfer & Storage
+# Nostr Key Management — archived notes
 
-The most notable thing here is that the secret moves over public relays. You do
-not run a server, you do not register with one, and the relay cannot read what it
-carries or tell who sent it. Every other way of doing this needs somebody to
-operate the thing in the middle.
+**The QR transfer specification moved to
+[sybenx/qr-secret-transfer](https://github.com/sybenx/qr-secret-transfer)**, beside
+its reference implementation, together with the two profiles it carries for Nostr
+(`nostr-nsec` and `frost-share`). That is the maintained project. Report problems
+with it there.
 
-Two specs live in this repo.
+This repository is kept as notes: design work on how a Nostr client should store a
+key, back it up, and split it with threshold signing. None of it is maintained, and
+none of it is needed to implement QR transfer. It is here for a possible future
+FROST signer, or for anyone building client-side key storage.
 
-**[QR_SECRET_TRANSFER.md](QR_SECRET_TRANSFER.md)** is the transfer mechanism, and
-it is the one to read first. One device shows a QR, the other scans it, and the
-secret travels inside a [gift-wrapped](https://github.com/nostr-protocol/nips/blob/master/59.md)
-message over public relays. The QR holds a throwaway public key and nothing else,
-so a photograph of it is worthless. Before the secret is released, the sending
-device makes you type a five digit code shown on the receiving device, which is
-what stops somebody sitting in the middle. It carries nsec identities, FROST
-shares, and anything else a profile defines.
+## What is here
 
-**[NOSTR_KEY_MANAGEMENT.md](NOSTR_KEY_MANAGEMENT.md)** is storage, backup, and
-optional FROST threshold signing. It registers the two payload profiles the
-transfer spec uses: `nostr-nsec` for a whole identity key, and `frost-share` for
-a single threshold share.
+The work split three ways and was never merged back together. Each line is kept as
+it was.
 
-The point of all this is to be better than copy-pasting an nsec between apps, and
-better than leaving one in a notes file. Storage is upgraded to whatever the
-device actually supports, and nothing blocks you from logging in if your device
-supports none of it. Where a sensible default can be picked for the user without
-giving something up, it is picked for them.
+| Where | What it is |
+|---|---|
+| `main` | `NOSTR_KEY_MANAGEMENT.md` 9.2-draft: key storage and unlock (§2), backup (§4), and a threshold-signing design of its own (§7) with two modes, a server co-signer and a serverless device quorum. `OVERVIEW.md` is the readable summary, `IMPLEMENTATION.md` a build proposal. |
+| branch [`archive/no-server-10.0`](https://github.com/sybenx/nostr-key-management/tree/archive/no-server-10.0) | An unpublished 10.0-draft that drops this project's own threshold signing in favour of [FROSTR](https://github.com/FROSTR-ORG/bifrost), keeps only two proposals to FROSTR (share rotation and a recovery delay, §7.9 and §7.10), and redefines `frost-share` as a FROSTR credential pair. That `frost-share` is the one that moved to qr-secret-transfer. |
+| branch [`claude/tiers-normative-doc-k1oq1m`](https://github.com/sybenx/nostr-key-management/tree/claude/tiers-normative-doc-k1oq1m) | `TIERS.md`: a tiered custody design built on 9.2, in which an always-online co-signer holds one share and can refuse to sign (rate limits, blocking mass deletion), plus `tiers_check.py` and its vectors. It contradicts the 10.0 draft, which removes the co-signer. It ends with three proposals to FROSTR. |
 
-## Why this is not NIP-46
+## What may be worth keeping
 
-NIP-46 is a signing protocol for a remote signer that holds the whole key and must
-be reachable for every signature. This project's threshold signing comes in two
-modes that each improve on something real (NKM §7):
+- **Storage and unlock** (`NOSTR_KEY_MANAGEMENT.md` §2): a ladder from platform
+  keystore to passkey-derived key to encrypted browser key, and an unlock rule that
+  prompts only for actions that touch the key itself.
+- **Backup** (§4): when to offer it, and a passkey-default encrypted blob store.
+- **The FROSTR proposals**: rotation and a recovery delay on the 10.0 branch, and
+  the three at the end of `TIERS.md`, for whatever FROSTR needs next.
+- **The co-signer policy** in `TIERS.md` §6, if a FROST signer server is ever
+  built: what a co-signer must see before it signs, and how it stops a stolen
+  device from deleting everything.
 
-- **Device quorum** — a serverless 2-of-N across your own devices. Any two sign; no
-  server exists; nobody in the middle sees anything. This is the thing NIP-46
-  structurally cannot do, and it's the upgrade to copy-pasting your nsec between your
-  devices.
-- **Co-signer** — a server holds one share, your device the other. This *is* the
-  NIP-46 shape, made strictly better: the server never holds your whole key, and a
-  breached server can neither reconstruct alone nor forge (it can't complete a
-  signature without one of your devices).
+## Open issues
 
-NIP-46 also does not specify a key transfer method, nor how to store a key, whether
-it is backed up, or what happens when the machine is lost. This project fills those
-gaps too.
+Issues [#1–#10](https://github.com/sybenx/nostr-key-management/issues) are all
+against §7 of `NOSTR_KEY_MANAGEMENT.md` 9.2, the threshold-signing design. They
+stand as notes on that design. [SPEC_ISSUES.md](SPEC_ISSUES.md) records what was
+settled before the move.
 
-## What this project is not
+## Licence
 
-The transfer mechanism is not new cryptography. The commit-then-reveal code
-comparison is ZRTP's, by way of Matrix, and it is cited as such. What is unusual
-is running it over infrastructure nobody operates for the purpose.
-
-## Status
-
-QR_SECRET_TRANSFER.md is version 1.6-draft: every message travels as an ephemeral
-gift wrap (kind 21059), which relays do not store, and is re-sent until answered
-(§11.4, §11.5); three levels of checking the short code — type it, compare it, or
-none for revocable payloads (§9.2) — a one-time token in every QR (§11.2), the
-`frost://` scheme (§12.3), and a profile-gated offline tier (§10) —
-passphrase-encrypted, no relay. A reference implementation
-and live demo are at
-[sybenx/qr-secret-transfer](https://github.com/sybenx/qr-secret-transfer). The event kinds are provisional —
-chosen from the ephemeral range and verified non-conflicting, but not yet reserved
-by a NIP — and the test vectors are incomplete: the §6 short code is covered in
-[vectors/](vectors/), the payload ceiling that P1 requires is not.
-
-NOSTR_KEY_MANAGEMENT.md is version 9.2-draft: the serverless device-quorum
-threshold mode (§7.18) alongside the server co-signer, and a passphrase-encrypted
-offline container for `frost-share` (§3.3), the one payload with no `ncryptsec` of
-its own.
-
-This project benefits from devs and users pressure testing the claims of the
-spec. Failure modes will be handled within reason to improve it. Structural
-robustness increases the convenience and security of users as far as the spec is
-widely deployed and followed, across various hardware and software conditions.
-Disagreements and suspected errors belong in an
-[issue](https://github.com/sybenx/nostr-key-management/issues/new?template=spec-issue.yml); the form asks for a section number and a proposed fix. Settled
-issues, and everything resolved so far, are recorded in
-[SPEC_ISSUES.md](SPEC_ISSUES.md). Pull requests are welcome too.
+CC0 ([LICENSE](LICENSE)).

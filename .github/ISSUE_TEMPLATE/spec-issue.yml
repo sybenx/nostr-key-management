@@ -1,5 +1,5 @@
 name: Problem with a specification
-description: An ambiguity, a suspected error, or a design disagreement in QRST, NKM or TIERS.
+description: An ambiguity, a suspected error, or a design disagreement in the archived NKM or TIERS documents.
 title: "§<section>: <short title>"
 labels: ["spec"]
 body:
@@ -14,7 +14,6 @@ body:
     attributes:
       label: Document
       options:
-        - QR_SECRET_TRANSFER.md (QRST)
         - NOSTR_KEY_MANAGEMENT.md (NKM)
         - TIERS.md
     validations:

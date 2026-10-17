@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
-  - name: A bug in the QRST demo or its code
-    url: https://github.com/sybenx/qr-secret-transfer/issues
-    about: Problems with the live demo or the reference implementation go to that repository.
+  - name: QR Secret Transfer (QRST), its profiles, or its demo
+    url: https://github.com/sybenx/qr-secret-transfer/issues/new/choose
+    about: The QR transfer specification moved to sybenx/qr-secret-transfer. Report problems with it, its profiles or the demo there.
